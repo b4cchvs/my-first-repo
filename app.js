@@ -172,7 +172,9 @@
         meta.append(el("span", { class: "badge " + p.badge }, "優先:" + p.label));
       }
       (task.tags || []).forEach((t) => meta.append(el("span", { class: "tag" }, "#" + t)));
-      if (task.dueDate) {
+      if (task.schedule === "daily") {
+        meta.append(el("span", { class: "due" }, "🔁 毎日"));
+      } else if (task.dueDate) {
         meta.append(el("span", {
           class: "due" + (isOverdue(task.dueDate, task.completed) ? " is-overdue" : ""),
         }, "📅 " + formatDate(task.dueDate)));
@@ -215,16 +217,18 @@
   // =========================================================
   function openTaskForm(id) {
     const editing = id ? state.tasks.find((x) => x.id === id) : null;
+    const linkedCustomer = editing && editing.customerId ? customerById(editing.customerId) : null;
     const data = editing || {
       type: "custom", title: "", customerId: "",
-      priority: "mid", dueDate: "", tags: [],
+      priority: "mid", schedule: "daily", dueDate: "", tags: [],
     };
 
     const form = el("form", { class: "task-form" });
 
-    // --- 種別切り替え（タスク名 or 鑑定タイプ） ---
     let currentType = data.type;
+    let schedule = data.schedule || (data.dueDate ? "deadline" : "daily");
 
+    // --- 種別セグメント（タスク名 or 鑑定タイプ） ---
     const typeSeg = el("div", { class: "seg" });
     const typeOptions = [
       { value: "custom", label: "タスク名入力" },
@@ -233,38 +237,75 @@
       { value: "upsell", label: "アップセル" },
     ];
 
-    // タスク名フィールド
+    // タスク名フィールド（タスク名入力のとき）
     const titleField = el("div", { class: "field" },
       el("label", {}, "タスク名"),
       el("input", { type: "text", name: "title", value: data.title || "", placeholder: "例：予約確認の連絡" }),
     );
 
-    // 顧客選択フィールド
-    const customerSelect = el("select", { name: "customerId" },
-      el("option", { value: "" }, "（顧客を選択）"),
-      ...state.customers.map((c) =>
-        el("option", { value: c.id, selected: c.id === data.customerId }, c.name)),
-    );
-    const customerField = el("div", { class: "field" },
-      el("label", {}, "対象の顧客"),
-      customerSelect,
-      state.customers.length === 0
-        ? el("p", { class: "hint" }, "先に「顧客管理」から顧客を登録してください。")
-        : null,
+    // 顧客名フィールド（鑑定のとき・直接入力＋既存候補）
+    const customerListId = "customer-name-options";
+    const datalist = el("datalist", { id: customerListId },
+      ...state.customers.map((c) => el("option", { value: c.name })));
+    const customerNameField = el("div", { class: "field" },
+      el("label", {}, "顧客名"),
+      el("input", {
+        type: "text", name: "customerName", list: customerListId,
+        value: linkedCustomer ? linkedCustomer.name : "", placeholder: "例：山田 花子",
+      }),
+      datalist,
+      el("p", { class: "hint" }, "入力した顧客は「顧客管理」に自動で登録されます。"),
     );
 
-    function refreshTypeUI() {
+    // 鑑定内容フィールド（鑑定のとき）
+    const contentArea = el("textarea", { name: "content", placeholder: "鑑定内容・結果をここに記録…" });
+    if (linkedCustomer && currentType !== "custom") {
+      contentArea.value = (linkedCustomer.results && linkedCustomer.results[currentType]) || "";
+    }
+    const contentField = el("div", { class: "field" },
+      el("label", {}, "鑑定内容"),
+      contentArea,
+    );
+
+    // --- スケジュールセグメント（毎日 or 期限あり） ---
+    const scheduleSeg = el("div", { class: "seg" });
+    const scheduleOptions = [
+      { value: "daily", label: "毎日" },
+      { value: "deadline", label: "期限あり" },
+    ];
+    const dueField = el("div", { class: "field" },
+      el("label", {}, "期限"),
+      el("input", { type: "date", name: "dueDate", value: data.dueDate || "" }),
+    );
+
+    function refreshUI() {
       typeSeg.querySelectorAll(".seg-option").forEach((o) =>
         o.classList.toggle("is-selected", o.dataset.value === currentType));
+      scheduleSeg.querySelectorAll(".seg-option").forEach((o) =>
+        o.classList.toggle("is-selected", o.dataset.value === schedule));
       const isCustom = currentType === "custom";
       titleField.style.display = isCustom ? "block" : "none";
-      customerField.style.display = isCustom ? "none" : "block";
+      customerNameField.style.display = isCustom ? "none" : "block";
+      contentField.style.display = isCustom ? "none" : "block";
+      dueField.style.display = schedule === "deadline" ? "block" : "none";
     }
 
     typeOptions.forEach((opt) => {
       const o = el("label", { class: "seg-option", dataset: { value: opt.value } }, opt.label);
-      o.addEventListener("click", () => { currentType = opt.value; refreshTypeUI(); });
+      o.addEventListener("click", () => {
+        currentType = opt.value;
+        // 種別を切り替えたら、その種別の保存済み鑑定内容に同期
+        if (linkedCustomer && currentType !== "custom") {
+          contentArea.value = (linkedCustomer.results && linkedCustomer.results[currentType]) || "";
+        }
+        refreshUI();
+      });
       typeSeg.append(o);
+    });
+    scheduleOptions.forEach((opt) => {
+      const o = el("label", { class: "seg-option", dataset: { value: opt.value } }, opt.label);
+      o.addEventListener("click", () => { schedule = opt.value; refreshUI(); });
+      scheduleSeg.append(o);
     });
 
     const prioritySelect = el("select", { name: "priority" },
@@ -275,9 +316,10 @@
     form.append(
       el("div", { class: "field" }, el("label", {}, "種別"), typeSeg),
       titleField,
-      customerField,
-      el("div", { class: "field" }, el("label", {}, "期限"),
-        el("input", { type: "date", name: "dueDate", value: data.dueDate || "" })),
+      customerNameField,
+      contentField,
+      el("div", { class: "field" }, el("label", {}, "スケジュール"), scheduleSeg),
+      dueField,
       el("div", { class: "field" }, el("label", {}, "優先度"), prioritySelect),
       el("div", { class: "field" }, el("label", {}, "タグ（カンマ区切り）"),
         el("input", { type: "text", name: "tags", value: (data.tags || []).join(", "), placeholder: "例：要フォロー, 常連" })),
@@ -287,7 +329,7 @@
       ),
     );
 
-    refreshTypeUI();
+    refreshUI();
 
     form.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -298,17 +340,27 @@
         alert("タスク名を入力してください。");
         return;
       }
-      if (currentType !== "custom" && !fd.get("customerId")) {
-        alert("対象の顧客を選択してください。");
+      if (currentType !== "custom" && !String(fd.get("customerName")).trim()) {
+        alert("顧客名を入力してください。");
         return;
+      }
+
+      // 鑑定タスクは顧客を find-or-create し、顧客管理へ自動登録
+      let customerId = "";
+      if (currentType !== "custom") {
+        const customer = findOrCreateCustomer(String(fd.get("customerName")));
+        customer.kanteiTypes[currentType] = true;
+        customer.results[currentType] = String(fd.get("content") || "");
+        customerId = customer.id;
       }
 
       const payload = {
         type: currentType,
         title: currentType === "custom" ? String(fd.get("title")).trim() : "",
-        customerId: currentType === "custom" ? "" : String(fd.get("customerId")),
+        customerId,
         priority: String(fd.get("priority")),
-        dueDate: String(fd.get("dueDate") || ""),
+        schedule,
+        dueDate: schedule === "deadline" ? String(fd.get("dueDate") || "") : "",
         tags,
       };
 
@@ -319,10 +371,26 @@
       }
       save();
       renderTasks();
+      renderCustomers();
       closeModal();
     });
 
     openModal(editing ? "タスクを編集" : "新規タスク", form);
+  }
+
+  /** 顧客名で既存顧客を探し、なければ新規作成して返す */
+  function findOrCreateCustomer(name) {
+    const trimmed = name.trim();
+    let c = state.customers.find((x) => x.name === trimmed);
+    if (!c) {
+      c = {
+        id: uid(), createdAt: Date.now(), name: trimmed,
+        kanteiTypes: { free: false, honkan: false, upsell: false },
+        results: { free: "", honkan: "", upsell: "" }, memo: "",
+      };
+      state.customers.push(c);
+    }
+    return c;
   }
 
   // =========================================================
