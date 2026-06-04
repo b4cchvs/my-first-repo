@@ -117,6 +117,22 @@ body {
 .btn-danger:hover { background: var(--danger); color: #fff; }
 .btn-sm { padding: 5px 10px; font-size: 0.8rem; }
 
+/* ===== タスク2カラム（毎日 / 今日） ===== */
+.task-columns { display: flex; gap: 16px; align-items: flex-start; }
+.task-col {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.col-title { margin: 0 0 12px; font-size: 0.95rem; }
+.task-col .empty-state { padding: 20px 0; font-size: 0.85rem; }
+@media (max-width: 640px) {
+  .task-columns { flex-direction: column; }
+}
+
 /* ===== タスク一覧 ===== */
 .task-list, .customer-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 
@@ -166,6 +182,7 @@ body {
   color: var(--text-muted);
 }
 .due.is-overdue { color: var(--danger); font-weight: 700; }
+.due.is-done-due { color: var(--free); font-weight: 700; }
 
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
@@ -262,6 +279,8 @@ body {
 .divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
 .section-label { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 10px; }
 
+.result-menu { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.result-menu .btn { width: 100%; padding: 12px; }
 .result-block { margin-bottom: 14px; }
 .result-block .result-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 
@@ -319,4 +338,5 @@ body {
   padding: 0 5px;
 }
 .cal-dot.overdue { background: var(--danger); }
+.cal-dot.done { background: var(--free); }
 .cal-legend { font-size: 0.78rem; color: var(--text-muted); margin-top: 12px; text-align: center; }

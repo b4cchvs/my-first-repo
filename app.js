@@ -45,8 +45,10 @@
   // DOM 参照
   // ---------------------------------------------------------
   const $ = (sel) => document.querySelector(sel);
-  const taskList = $("#task-list");
-  const taskEmpty = $("#task-empty");
+  const dailyList = $("#daily-list");
+  const dailyEmpty = $("#daily-empty");
+  const todayList = $("#today-list");
+  const todayEmpty = $("#today-empty");
   const customerList = $("#customer-list");
   const customerEmpty = $("#customer-empty");
   const overlay = $("#modal-overlay");
@@ -90,6 +92,10 @@
     today.setHours(0, 0, 0, 0);
     return new Date(dueDate) < today;
   }
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const todayISO = () => toISO(new Date());
 
   // ---------------------------------------------------------
   // テーマ（ダークモード）
@@ -141,52 +147,63 @@
   // =========================================================
   // タスク：レンダリング
   // =========================================================
-  function renderTasks() {
-    taskList.replaceChildren();
-    const tasks = [...state.tasks].sort((a, b) => {
-      // 未完了を上に、その後は作成日時順
-      if (a.completed !== b.completed) return a.completed ? 1 : -1;
-      return a.createdAt - b.createdAt;
-    });
+  /** 1件のタスク行を生成（毎日／今日の両カラム・日付ポップアップで共用） */
+  function buildTaskItem(task) {
+    const customer = task.customerId ? customerById(task.customerId) : null;
+    const typeMeta = task.type !== "custom" ? KANTEI[task.type] : null;
 
-    taskEmpty.style.display = tasks.length ? "none" : "block";
+    const title = task.type === "custom"
+      ? task.title
+      : `${customer ? customer.name + "さん｜" : ""}${typeMeta.label}`;
 
-    for (const task of tasks) {
-      const customer = task.customerId ? customerById(task.customerId) : null;
-      const typeMeta = task.type !== "custom" ? KANTEI[task.type] : null;
-
-      const title = task.type === "custom"
-        ? task.title
-        : `${customer ? customer.name + "さん｜" : ""}${typeMeta.label}`;
-
-      const meta = el("div", { class: "task-meta" });
-      if (typeMeta) meta.append(el("span", { class: "badge " + typeMeta.badge }, typeMeta.label));
-      if (task.schedule === "daily") {
-        meta.append(el("span", { class: "due" }, "🔁 毎日"));
-      } else if (task.dueDate) {
-        meta.append(el("span", {
-          class: "due" + (isOverdue(task.dueDate, task.completed) ? " is-overdue" : ""),
-        }, "📅 " + formatDate(task.dueDate)));
-      }
-
-      const item = el("li", { class: "task-item" + (task.completed ? " is-done" : "") },
-        el("input", {
-          type: "checkbox",
-          class: "task-check",
-          checked: task.completed,
-          onchange: () => toggleTask(task.id),
-        }),
-        el("div", { class: "task-main", onclick: () => openTaskDetail(task.id) },
-          el("div", { class: "task-title" }, title),
-          meta.children.length ? meta : null,
-        ),
-        el("div", { class: "row-actions" },
-          el("button", { class: "btn btn-sm", onclick: () => openTaskForm(task.id) }, "編集"),
-          el("button", { class: "btn btn-sm btn-danger", onclick: () => deleteTask(task.id) }, "削除"),
-        ),
-      );
-      taskList.append(item);
+    // スケジュール表示（完了時は「✅ 完了」で分かりやすく）
+    const meta = el("div", { class: "task-meta" });
+    if (typeMeta) meta.append(el("span", { class: "badge " + typeMeta.badge }, typeMeta.label));
+    if (task.schedule === "daily") {
+      meta.append(el("span", { class: "due" }, "🔁 毎日"));
+    } else if (task.completed) {
+      meta.append(el("span", { class: "due is-done-due" }, "✅ 完了"));
+    } else if (task.dueDate) {
+      meta.append(el("span", {
+        class: "due" + (isOverdue(task.dueDate, task.completed) ? " is-overdue" : ""),
+      }, "📅 " + formatDate(task.dueDate)));
     }
+
+    return el("li", { class: "task-item" + (task.completed ? " is-done" : "") },
+      el("input", {
+        type: "checkbox", class: "task-check", checked: task.completed,
+        onchange: () => toggleTask(task.id),
+      }),
+      el("div", { class: "task-main", onclick: () => openTaskDetail(task.id) },
+        el("div", { class: "task-title" }, title),
+        meta.children.length ? meta : null,
+      ),
+      el("div", { class: "row-actions" },
+        el("button", { class: "btn btn-sm", onclick: () => openTaskForm(task.id) }, "編集"),
+        el("button", { class: "btn btn-sm btn-danger", onclick: () => deleteTask(task.id) }, "削除"),
+      ),
+    );
+  }
+
+  function renderTaskColumn(listEl, emptyEl, tasks) {
+    listEl.replaceChildren();
+    emptyEl.style.display = tasks.length ? "none" : "block";
+    tasks.forEach((t) => listEl.append(buildTaskItem(t)));
+  }
+
+  function renderTasks() {
+    // 未完了を上に、その後は作成日時順
+    const sortFn = (a, b) =>
+      a.completed !== b.completed ? (a.completed ? 1 : -1) : a.createdAt - b.createdAt;
+
+    const today = todayISO();
+    // 毎日のタスク = スケジュール「毎日」／今日のタスク = 期限が今日のもの。それ以外は非表示
+    const dailyTasks = state.tasks.filter((t) => t.schedule === "daily").sort(sortFn);
+    const todayTasks = state.tasks
+      .filter((t) => t.schedule !== "daily" && t.dueDate === today).sort(sortFn);
+
+    renderTaskColumn(dailyList, dailyEmpty, dailyTasks);
+    renderTaskColumn(todayList, todayEmpty, todayTasks);
   }
 
   function toggleTask(id) {
@@ -402,7 +419,7 @@
       ),
     );
 
-    if (customer) {
+    if (customer && task.type !== "upsell") {
       body.append(el("hr", { class: "divider" }));
       body.append(el("div", { class: "section-label" }, "鑑定結果（この内容は顧客情報に保存されます）"));
 
@@ -564,40 +581,58 @@
   // =========================================================
   // 顧客：鑑定結果ポップアップ
   // =========================================================
+  // 鑑定結果メニュー：種別ボタンを選ぶと、その種別の結果ポップアップを表示
   function openCustomerResults(id) {
+    const customer = customerById(id);
+    if (!customer) return;
+
+    const body = el("div", {},
+      el("p", { class: "hint" }, "確認・編集する鑑定を選んでください。"),
+      el("div", { class: "result-menu" },
+        el("button", { type: "button", class: "btn", onclick: () => openResultDetail(id, "free") }, "無料鑑定"),
+        el("button", { type: "button", class: "btn", onclick: () => openResultDetail(id, "honkan") }, "本鑑定"),
+        el("button", { type: "button", class: "btn", onclick: () => openResultDetail(id, "upsell") }, "アップセル"),
+      ),
+      el("div", { class: "modal-actions" },
+        el("button", { type: "button", class: "btn", onclick: closeModal }, "閉じる")),
+    );
+
+    openModal(customer.name + " さんの鑑定結果", body);
+  }
+
+  // 種別ごとの結果ポップアップ（アップセルは結果欄なし＝空）
+  function openResultDetail(id, type) {
     const customer = customerById(id);
     if (!customer) return;
     customer.results = customer.results || { free: "", honkan: "", upsell: "" };
 
     const body = el("div", {});
-    const inputs = {};
-    KANTEI_KEYS.forEach((k) => {
-      const ta = el("textarea", { placeholder: KANTEI[k].label + "の結果…" });
-      ta.value = customer.results[k] || "";
-      inputs[k] = ta;
+
+    if (type === "upsell") {
+      // アップセルは何もないポップアップ
+      body.append(el("p", { class: "hint" }, "アップセルに記録する鑑定結果はありません。"));
+      body.append(el("div", { class: "modal-actions" },
+        el("button", { type: "button", class: "btn", onclick: () => openCustomerResults(id) }, "戻る")));
+    } else {
+      const ta = el("textarea", { placeholder: KANTEI[type].label + "の結果…" });
+      ta.value = customer.results[type] || "";
       body.append(
         el("div", { class: "result-block" },
-          el("div", { class: "result-head" }, el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label)),
+          el("div", { class: "result-head" },
+            el("span", { class: "badge " + KANTEI[type].badge }, KANTEI[type].label + "結果")),
           ta,
         ),
+        el("div", { class: "modal-actions" },
+          el("button", { type: "button", class: "btn", onclick: () => openCustomerResults(id) }, "戻る"),
+          el("button", {
+            type: "button", class: "btn btn-primary",
+            onclick: () => { customer.results[type] = ta.value; save(); closeModal(); },
+          }, "保存"),
+        ),
       );
-    });
+    }
 
-    body.append(
-      el("div", { class: "modal-actions" },
-        el("button", { type: "button", class: "btn", onclick: closeModal }, "閉じる"),
-        el("button", {
-          type: "button", class: "btn btn-primary",
-          onclick: () => {
-            KANTEI_KEYS.forEach((k) => { customer.results[k] = inputs[k].value; });
-            save();
-            closeModal();
-          },
-        }, "保存"),
-      ),
-    );
-
-    openModal(customer.name + " さんの鑑定結果", body);
+    openModal(customer.name + " さん｜" + KANTEI[type].label, body);
   }
 
   // =========================================================
@@ -606,9 +641,6 @@
   const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
   const calRef = new Date();
   calRef.setDate(1);
-
-  const pad = (n) => String(n).padStart(2, "0");
-  const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
   function renderCalendar() {
     const cal = $("#calendar");
@@ -637,6 +669,7 @@
       const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
       const weekday = new Date(year, month, d).getDay();
       const dayTasks = state.tasks.filter((t) => t.schedule !== "daily" && t.dueDate === dateStr);
+      const allDone = dayTasks.length > 0 && dayTasks.every((t) => t.completed);
       const hasOverdue = dayTasks.some((t) => !t.completed && dateStr < todayStr);
 
       const cell = el("div", {
@@ -649,8 +682,10 @@
       }, String(d)));
 
       if (dayTasks.length) {
-        cell.append(el("div", { class: "cal-dot" + (hasOverdue ? " overdue" : "") },
-          dayTasks.length > 1 ? String(dayTasks.length) : ""));
+        // 完了済み=緑✓ / 期限切れ=赤 / それ以外=件数
+        const dotClass = "cal-dot" + (allDone ? " done" : hasOverdue ? " overdue" : "");
+        const dotText = allDone ? "✓" : (dayTasks.length > 1 ? String(dayTasks.length) : "");
+        cell.append(el("div", { class: dotClass }, dotText));
         cell.style.cursor = "pointer";
         cell.addEventListener("click", () => openDayTasks(dateStr));
       }

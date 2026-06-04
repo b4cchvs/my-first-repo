@@ -22,11 +22,22 @@
     <!-- ===== タスク一覧ビュー ===== -->
     <section id="view-tasks" class="view is-active">
       <div class="view-bar">
-        <h2 class="view-heading">毎日のタスク</h2>
+        <h2 class="view-heading">タスク</h2>
         <button id="new-task-btn" class="btn btn-primary">＋ 新規タスク</button>
       </div>
-      <ul id="task-list" class="task-list"></ul>
-      <p id="task-empty" class="empty-state">タスクがありません。「＋ 新規タスク」から追加してください。</p>
+
+      <div class="task-columns">
+        <div class="task-col">
+          <h3 class="col-title">毎日のタスク</h3>
+          <ul id="daily-list" class="task-list"></ul>
+          <p id="daily-empty" class="empty-state">毎日のタスクはありません。</p>
+        </div>
+        <div class="task-col">
+          <h3 class="col-title">今日のタスク</h3>
+          <ul id="today-list" class="task-list"></ul>
+          <p id="today-empty" class="empty-state">今日締切のタスクはありません。</p>
+        </div>
+      </div>
 
       <section class="calendar-section">
         <div class="cal-head">
