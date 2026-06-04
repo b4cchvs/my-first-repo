@@ -17,6 +17,10 @@
   };
   const KANTEI_KEYS = ["free", "honkan", "upsell"];
 
+  /** 顧客のフェーズ（営業段階） */
+  const PHASES = ["見込み", "無料鑑定", "本鑑定", "アップセル", "リピート"];
+  const formatYen = (n) => "¥" + (Number(n) || 0).toLocaleString("ja-JP");
+
   // ---------------------------------------------------------
   // 状態管理 / 永続化
   // ---------------------------------------------------------
@@ -386,6 +390,7 @@
     if (!c) {
       c = {
         id: uid(), createdAt: Date.now(), name: trimmed,
+        phase: PHASES[0], ltv: 0,
         kanteiTypes: { free: false, honkan: false, upsell: false },
         results: { free: "", honkan: "", upsell: "" }, memo: "",
       };
@@ -472,9 +477,17 @@
       });
 
       const item = el("li", { class: "customer-item", onclick: () => openCustomerForm(c.id) },
-        el("div", {},
-          el("div", { class: "customer-name" }, c.name),
-          badges.children.length ? badges : el("div", { class: "customer-sub" }, "鑑定タイプ未設定"),
+        el("div", { class: "customer-info" },
+          // 顧客名 ＋ フェーズ
+          el("div", { class: "customer-line" },
+            el("span", { class: "customer-name" }, c.name),
+            el("span", { class: "badge badge-phase" }, c.phase || PHASES[0]),
+          ),
+          // LTV ＋ 鑑定タイプ
+          el("div", { class: "customer-sub" },
+            el("span", { class: "ltv" }, "LTV " + formatYen(c.ltv)),
+            badges.children.length ? badges : null,
+          ),
         ),
         el("div", { class: "row-actions" },
           el("button", {
@@ -510,7 +523,8 @@
   function openCustomerForm(id) {
     const editing = id ? state.customers.find((x) => x.id === id) : null;
     const data = editing || {
-      name: "", kanteiTypes: { free: false, honkan: false, upsell: false },
+      name: "", phase: PHASES[0], ltv: 0,
+      kanteiTypes: { free: false, honkan: false, upsell: false },
       results: { free: "", honkan: "", upsell: "" }, memo: "",
     };
 
@@ -525,10 +539,22 @@
       typeChecks.append(el("label", { class: "check-row" }, input, KANTEI[k].label));
     });
 
+    // フェーズ
+    const phaseSelect = el("select", { name: "phase" },
+      ...PHASES.map((p) => el("option", { value: p, selected: p === (data.phase || PHASES[0]) }, p)));
+
     form.append(
       el("div", { class: "field" },
         el("label", {}, "顧客名"),
         el("input", { type: "text", name: "name", value: data.name || "", placeholder: "例：山田 花子", required: true }),
+      ),
+      el("div", { class: "field" },
+        el("label", {}, "フェーズ"),
+        phaseSelect,
+      ),
+      el("div", { class: "field" },
+        el("label", {}, "LTV（累計売上・円）"),
+        el("input", { type: "number", name: "ltv", min: "0", step: "1", value: data.ltv || 0 }),
       ),
       el("div", { class: "field" },
         el("label", {}, "この顧客で扱う鑑定タイプ"),
@@ -558,14 +584,18 @@
 
       const kanteiTypes = {};
       KANTEI_KEYS.forEach((k) => { kanteiTypes[k] = checkInputs[k].checked; });
+      const phase = String(fd.get("phase") || PHASES[0]);
+      const ltv = Math.max(0, Number(fd.get("ltv")) || 0);
 
       if (editing) {
         editing.name = name;
+        editing.phase = phase;
+        editing.ltv = ltv;
         editing.kanteiTypes = kanteiTypes;
         editing.memo = String(fd.get("memo") || "");
       } else {
         state.customers.push({
-          id: uid(), createdAt: Date.now(), name, kanteiTypes,
+          id: uid(), createdAt: Date.now(), name, phase, ltv, kanteiTypes,
           results: { free: "", honkan: "", upsell: "" }, memo: String(fd.get("memo") || ""),
         });
       }

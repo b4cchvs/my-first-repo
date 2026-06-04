@@ -197,8 +197,12 @@ body {
   padding: 12px 14px;
   cursor: pointer;
 }
+.customer-info { min-width: 0; }
+.customer-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .customer-name { font-weight: 700; }
-.customer-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+.customer-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ltv { font-weight: 700; color: var(--text); }
+.badge-phase { background: var(--text-muted); }
 
 /* ===== モーダル ===== */
 .modal-overlay {
@@ -283,6 +287,20 @@ body {
 .result-menu .btn { width: 100%; padding: 12px; }
 .result-block { margin-bottom: 14px; }
 .result-block .result-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+/* 鑑定結果欄：伸縮させず、固定の高さでぱっと見で読める */
+.result-block textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  resize: none;
+}
 
 .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: -8px; margin-bottom: 14px; }
 
