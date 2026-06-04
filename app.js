@@ -254,7 +254,6 @@
         value: linkedCustomer ? linkedCustomer.name : "", placeholder: "例：山田 花子",
       }),
       datalist,
-      el("p", { class: "hint" }, "入力した顧客は「顧客管理」に自動で登録されます。"),
     );
 
     // 鑑定内容フィールド（鑑定のとき）
