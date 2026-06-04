@@ -1,0 +1,531 @@
+/* =========================================================
+   鑑定タスク管理アプリ
+   - データはブラウザの localStorage に永続化（バックエンド不要）
+   - 認証なし・個人利用・PCブラウザ向け
+   ========================================================= */
+
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "kantei-task-app:v1";
+
+  /** 鑑定タイプの定義（表示名・バッジ色クラス） */
+  const KANTEI = {
+    free:   { label: "無料鑑定", badge: "badge-free" },
+    honkan: { label: "本鑑定",   badge: "badge-honkan" },
+    upsell: { label: "アップセル", badge: "badge-upsell" },
+  };
+  const KANTEI_KEYS = ["free", "honkan", "upsell"];
+
+  const PRIORITY = {
+    high: { label: "高", badge: "badge-prio-high" },
+    mid:  { label: "中", badge: "badge-prio-mid" },
+    low:  { label: "低", badge: "badge-prio-low" },
+  };
+
+  // ---------------------------------------------------------
+  // 状態管理 / 永続化
+  // ---------------------------------------------------------
+  /** @type {{customers: any[], tasks: any[], settings: {theme: string}}} */
+  let state = load();
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {
+      console.warn("データ読み込みに失敗しました", e);
+    }
+    return { customers: [], tasks: [], settings: { theme: "light" } };
+  }
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  // ---------------------------------------------------------
+  // DOM 参照
+  // ---------------------------------------------------------
+  const $ = (sel) => document.querySelector(sel);
+  const taskList = $("#task-list");
+  const taskEmpty = $("#task-empty");
+  const customerList = $("#customer-list");
+  const customerEmpty = $("#customer-empty");
+  const overlay = $("#modal-overlay");
+  const modalTitle = $("#modal-title");
+  const modalBody = $("#modal-body");
+
+  // ---------------------------------------------------------
+  // ユーティリティ
+  // ---------------------------------------------------------
+  function el(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") node.className = v;
+      else if (k === "dataset") Object.assign(node.dataset, v);
+      else if (k.startsWith("on") && typeof v === "function") {
+        node.addEventListener(k.slice(2).toLowerCase(), v);
+      } else if (v !== null && v !== undefined && v !== false) {
+        node.setAttribute(k, v);
+      }
+    }
+    for (const c of children.flat()) {
+      if (c === null || c === undefined || c === false) continue;
+      node.append(c.nodeType ? c : document.createTextNode(String(c)));
+    }
+    return node;
+  }
+
+  function customerById(id) {
+    return state.customers.find((c) => c.id === id) || null;
+  }
+
+  function formatDate(d) {
+    if (!d) return "";
+    const [y, m, day] = d.split("-");
+    return `${Number(m)}/${Number(day)}`;
+  }
+
+  function isOverdue(dueDate, completed) {
+    if (!dueDate || completed) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(dueDate) < today;
+  }
+
+  // ---------------------------------------------------------
+  // テーマ（ダークモード）
+  // ---------------------------------------------------------
+  function applyTheme() {
+    const dark = state.settings.theme === "dark";
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    $("#theme-toggle").textContent = dark ? "☀️" : "🌙";
+  }
+
+  $("#theme-toggle").addEventListener("click", () => {
+    state.settings.theme = state.settings.theme === "dark" ? "light" : "dark";
+    save();
+    applyTheme();
+  });
+
+  // ---------------------------------------------------------
+  // タブ切り替え
+  // ---------------------------------------------------------
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("is-active"));
+      document.querySelectorAll(".view").forEach((v) => v.classList.remove("is-active"));
+      tab.classList.add("is-active");
+      $("#view-" + tab.dataset.view).classList.add("is-active");
+    });
+  });
+
+  // ---------------------------------------------------------
+  // モーダル制御
+  // ---------------------------------------------------------
+  function openModal(title, bodyNode) {
+    modalTitle.textContent = title;
+    modalBody.replaceChildren(bodyNode);
+    overlay.hidden = false;
+  }
+  function closeModal() {
+    overlay.hidden = true;
+    modalBody.replaceChildren();
+  }
+  $("#modal-close").addEventListener("click", closeModal);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !overlay.hidden) closeModal();
+  });
+
+  // =========================================================
+  // タスク：レンダリング
+  // =========================================================
+  function renderTasks() {
+    taskList.replaceChildren();
+    const tasks = [...state.tasks].sort((a, b) => {
+      // 未完了を上に、その後は作成日時順
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      return a.createdAt - b.createdAt;
+    });
+
+    taskEmpty.style.display = tasks.length ? "none" : "block";
+
+    for (const task of tasks) {
+      const customer = task.customerId ? customerById(task.customerId) : null;
+      const typeMeta = task.type !== "custom" ? KANTEI[task.type] : null;
+
+      const title = task.type === "custom"
+        ? task.title
+        : `${customer ? customer.name + "さん｜" : ""}${typeMeta.label}`;
+
+      const meta = el("div", { class: "task-meta" });
+      if (typeMeta) meta.append(el("span", { class: "badge " + typeMeta.badge }, typeMeta.label));
+      if (task.priority) {
+        const p = PRIORITY[task.priority];
+        meta.append(el("span", { class: "badge " + p.badge }, "優先:" + p.label));
+      }
+      (task.tags || []).forEach((t) => meta.append(el("span", { class: "tag" }, "#" + t)));
+      if (task.dueDate) {
+        meta.append(el("span", {
+          class: "due" + (isOverdue(task.dueDate, task.completed) ? " is-overdue" : ""),
+        }, "📅 " + formatDate(task.dueDate)));
+      }
+
+      const item = el("li", { class: "task-item" + (task.completed ? " is-done" : "") },
+        el("input", {
+          type: "checkbox",
+          class: "task-check",
+          checked: task.completed,
+          onchange: () => toggleTask(task.id),
+        }),
+        el("div", { class: "task-main", onclick: () => openTaskDetail(task.id) },
+          el("div", { class: "task-title" }, title),
+          meta.children.length ? meta : null,
+        ),
+        el("div", { class: "row-actions" },
+          el("button", { class: "btn btn-sm", onclick: () => openTaskForm(task.id) }, "編集"),
+          el("button", { class: "btn btn-sm btn-danger", onclick: () => deleteTask(task.id) }, "削除"),
+        ),
+      );
+      taskList.append(item);
+    }
+  }
+
+  function toggleTask(id) {
+    const t = state.tasks.find((x) => x.id === id);
+    if (t) { t.completed = !t.completed; save(); renderTasks(); }
+  }
+
+  function deleteTask(id) {
+    if (!confirm("このタスクを削除しますか？")) return;
+    state.tasks = state.tasks.filter((x) => x.id !== id);
+    save();
+    renderTasks();
+  }
+
+  // =========================================================
+  // タスク：作成・編集フォーム
+  // =========================================================
+  function openTaskForm(id) {
+    const editing = id ? state.tasks.find((x) => x.id === id) : null;
+    const data = editing || {
+      type: "custom", title: "", customerId: "",
+      priority: "mid", dueDate: "", tags: [],
+    };
+
+    const form = el("form", { class: "task-form" });
+
+    // --- 種別切り替え（タスク名 or 鑑定タイプ） ---
+    let currentType = data.type;
+
+    const typeSeg = el("div", { class: "seg" });
+    const typeOptions = [
+      { value: "custom", label: "タスク名入力" },
+      { value: "free", label: "無料鑑定" },
+      { value: "honkan", label: "本鑑定" },
+      { value: "upsell", label: "アップセル" },
+    ];
+
+    // タスク名フィールド
+    const titleField = el("div", { class: "field" },
+      el("label", {}, "タスク名"),
+      el("input", { type: "text", name: "title", value: data.title || "", placeholder: "例：予約確認の連絡" }),
+    );
+
+    // 顧客選択フィールド
+    const customerSelect = el("select", { name: "customerId" },
+      el("option", { value: "" }, "（顧客を選択）"),
+      ...state.customers.map((c) =>
+        el("option", { value: c.id, selected: c.id === data.customerId }, c.name)),
+    );
+    const customerField = el("div", { class: "field" },
+      el("label", {}, "対象の顧客"),
+      customerSelect,
+      state.customers.length === 0
+        ? el("p", { class: "hint" }, "先に「顧客管理」から顧客を登録してください。")
+        : null,
+    );
+
+    function refreshTypeUI() {
+      typeSeg.querySelectorAll(".seg-option").forEach((o) =>
+        o.classList.toggle("is-selected", o.dataset.value === currentType));
+      const isCustom = currentType === "custom";
+      titleField.style.display = isCustom ? "block" : "none";
+      customerField.style.display = isCustom ? "none" : "block";
+    }
+
+    typeOptions.forEach((opt) => {
+      const o = el("label", { class: "seg-option", dataset: { value: opt.value } }, opt.label);
+      o.addEventListener("click", () => { currentType = opt.value; refreshTypeUI(); });
+      typeSeg.append(o);
+    });
+
+    const prioritySelect = el("select", { name: "priority" },
+      ...Object.entries(PRIORITY).map(([k, v]) =>
+        el("option", { value: k, selected: k === data.priority }, "優先度：" + v.label)),
+    );
+
+    form.append(
+      el("div", { class: "field" }, el("label", {}, "種別"), typeSeg),
+      titleField,
+      customerField,
+      el("div", { class: "field" }, el("label", {}, "期限"),
+        el("input", { type: "date", name: "dueDate", value: data.dueDate || "" })),
+      el("div", { class: "field" }, el("label", {}, "優先度"), prioritySelect),
+      el("div", { class: "field" }, el("label", {}, "タグ（カンマ区切り）"),
+        el("input", { type: "text", name: "tags", value: (data.tags || []).join(", "), placeholder: "例：要フォロー, 常連" })),
+      el("div", { class: "modal-actions" },
+        el("button", { type: "button", class: "btn", onclick: closeModal }, "キャンセル"),
+        el("button", { type: "submit", class: "btn btn-primary" }, editing ? "更新" : "追加"),
+      ),
+    );
+
+    refreshTypeUI();
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const tags = String(fd.get("tags") || "").split(",").map((s) => s.trim()).filter(Boolean);
+
+      if (currentType === "custom" && !String(fd.get("title")).trim()) {
+        alert("タスク名を入力してください。");
+        return;
+      }
+      if (currentType !== "custom" && !fd.get("customerId")) {
+        alert("対象の顧客を選択してください。");
+        return;
+      }
+
+      const payload = {
+        type: currentType,
+        title: currentType === "custom" ? String(fd.get("title")).trim() : "",
+        customerId: currentType === "custom" ? "" : String(fd.get("customerId")),
+        priority: String(fd.get("priority")),
+        dueDate: String(fd.get("dueDate") || ""),
+        tags,
+      };
+
+      if (editing) {
+        Object.assign(editing, payload);
+      } else {
+        state.tasks.push({ id: uid(), completed: false, createdAt: Date.now(), ...payload });
+      }
+      save();
+      renderTasks();
+      closeModal();
+    });
+
+    openModal(editing ? "タスクを編集" : "新規タスク", form);
+  }
+
+  // =========================================================
+  // タスク：詳細（鑑定結果ポップアップ）
+  // =========================================================
+  function openTaskDetail(id) {
+    const task = state.tasks.find((x) => x.id === id);
+    if (!task) return;
+
+    // 鑑定タイプでない（タスク名入力）の場合はそのまま編集フォームへ
+    if (task.type === "custom") { openTaskForm(id); return; }
+
+    const customer = customerById(task.customerId);
+    const typeMeta = KANTEI[task.type];
+
+    const body = el("div", {});
+    body.append(
+      el("div", { class: "field" },
+        el("label", {}, "顧客"),
+        el("div", {}, customer ? customer.name + " さん" : "（顧客情報なし）"),
+      ),
+      el("div", { class: "field" },
+        el("label", {}, "鑑定種別"),
+        el("span", { class: "badge " + typeMeta.badge }, typeMeta.label),
+      ),
+    );
+
+    if (customer) {
+      body.append(el("hr", { class: "divider" }));
+      body.append(el("div", { class: "section-label" }, "鑑定結果（この内容は顧客情報に保存されます）"));
+
+      const resultArea = el("textarea", {
+        name: "result",
+        placeholder: typeMeta.label + "の結果をここに記録できます…",
+      });
+      resultArea.value = (customer.results && customer.results[task.type]) || "";
+
+      body.append(
+        el("div", { class: "result-block" },
+          el("div", { class: "result-head" },
+            el("span", { class: "badge " + typeMeta.badge }, typeMeta.label + "結果")),
+          resultArea,
+        ),
+        el("div", { class: "modal-actions" },
+          el("button", { class: "btn", onclick: closeModal }, "閉じる"),
+          el("button", {
+            class: "btn btn-primary",
+            onclick: () => {
+              customer.results = customer.results || {};
+              customer.results[task.type] = resultArea.value;
+              save();
+              closeModal();
+            },
+          }, "結果を保存"),
+        ),
+      );
+    } else {
+      body.append(el("div", { class: "modal-actions" },
+        el("button", { class: "btn", onclick: closeModal }, "閉じる")));
+    }
+
+    openModal("タスク詳細", body);
+  }
+
+  // =========================================================
+  // 顧客：レンダリング
+  // =========================================================
+  function renderCustomers() {
+    customerList.replaceChildren();
+    customerEmpty.style.display = state.customers.length ? "none" : "block";
+
+    for (const c of state.customers) {
+      const badges = el("div", { class: "task-meta" });
+      KANTEI_KEYS.forEach((k) => {
+        if (c.kanteiTypes && c.kanteiTypes[k]) {
+          badges.append(el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label));
+        }
+      });
+
+      const item = el("li", { class: "customer-item", onclick: () => openCustomerForm(c.id) },
+        el("div", {},
+          el("div", { class: "customer-name" }, c.name),
+          badges.children.length ? badges : el("div", { class: "customer-sub" }, "鑑定タイプ未設定"),
+        ),
+        el("div", { class: "row-actions" },
+          el("button", {
+            class: "btn btn-sm btn-danger",
+            onclick: (e) => { e.stopPropagation(); deleteCustomer(c.id); },
+          }, "削除"),
+        ),
+      );
+      customerList.append(item);
+    }
+  }
+
+  function deleteCustomer(id) {
+    const linked = state.tasks.filter((t) => t.customerId === id).length;
+    const msg = linked
+      ? `この顧客に紐づくタスクが ${linked} 件あります。顧客とそのタスクを削除しますか？`
+      : "この顧客を削除しますか？";
+    if (!confirm(msg)) return;
+    state.customers = state.customers.filter((c) => c.id !== id);
+    state.tasks = state.tasks.filter((t) => t.customerId !== id);
+    save();
+    renderCustomers();
+    renderTasks();
+  }
+
+  // =========================================================
+  // 顧客：作成・編集フォーム（鑑定タイプ選択 & 結果格納）
+  // =========================================================
+  function openCustomerForm(id) {
+    const editing = id ? state.customers.find((x) => x.id === id) : null;
+    const data = editing || {
+      name: "", kanteiTypes: { free: false, honkan: false, upsell: false },
+      results: { free: "", honkan: "", upsell: "" }, memo: "",
+    };
+
+    const form = el("form", {});
+
+    // 鑑定タイプのチェック（人ごとに選択）
+    const typeChecks = el("div", {});
+    const checkInputs = {};
+    KANTEI_KEYS.forEach((k) => {
+      const input = el("input", { type: "checkbox", checked: data.kanteiTypes && data.kanteiTypes[k] });
+      checkInputs[k] = input;
+      typeChecks.append(el("label", { class: "check-row" }, input, KANTEI[k].label));
+    });
+
+    // 鑑定結果テキストエリア
+    const resultInputs = {};
+    const resultsWrap = el("div", {});
+    KANTEI_KEYS.forEach((k) => {
+      const ta = el("textarea", { placeholder: KANTEI[k].label + "の結果…" });
+      ta.value = (data.results && data.results[k]) || "";
+      resultInputs[k] = ta;
+      resultsWrap.append(
+        el("div", { class: "result-block" },
+          el("div", { class: "result-head" }, el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label)),
+          ta,
+        ),
+      );
+    });
+
+    form.append(
+      el("div", { class: "field" },
+        el("label", {}, "顧客名"),
+        el("input", { type: "text", name: "name", value: data.name || "", placeholder: "例：山田 花子", required: true }),
+      ),
+      el("div", { class: "field" },
+        el("label", {}, "この顧客で扱う鑑定タイプ"),
+        typeChecks,
+      ),
+      el("hr", { class: "divider" }),
+      el("div", { class: "section-label" }, "鑑定結果の格納"),
+      resultsWrap,
+      el("div", { class: "field" },
+        el("label", {}, "メモ"),
+        (() => { const t = el("textarea", { name: "memo", placeholder: "自由メモ…" }); t.value = data.memo || ""; return t; })(),
+      ),
+      el("div", { class: "modal-actions" },
+        editing ? el("button", { type: "button", class: "btn btn-danger", onclick: () => deleteCustomer(editing.id) }, "削除") : null,
+        el("button", { type: "button", class: "btn", onclick: closeModal }, "キャンセル"),
+        el("button", { type: "submit", class: "btn btn-primary" }, editing ? "更新" : "追加"),
+      ),
+    );
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const name = String(fd.get("name")).trim();
+      if (!name) { alert("顧客名を入力してください。"); return; }
+
+      const kanteiTypes = {};
+      const results = {};
+      KANTEI_KEYS.forEach((k) => {
+        kanteiTypes[k] = checkInputs[k].checked;
+        results[k] = resultInputs[k].value;
+      });
+
+      const payload = { name, kanteiTypes, results, memo: String(fd.get("memo") || "") };
+
+      if (editing) {
+        Object.assign(editing, payload);
+      } else {
+        state.customers.push({ id: uid(), createdAt: Date.now(), ...payload });
+      }
+      save();
+      renderCustomers();
+      renderTasks();
+      closeModal();
+    });
+
+    openModal(editing ? "顧客を編集" : "新規顧客", form);
+  }
+
+  // ---------------------------------------------------------
+  // イベント結線 & 初期描画
+  // ---------------------------------------------------------
+  $("#new-task-btn").addEventListener("click", () => openTaskForm());
+  $("#new-customer-btn").addEventListener("click", () => openCustomerForm());
+
+  applyTheme();
+  renderTasks();
+  renderCustomers();
+})();
