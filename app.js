@@ -17,12 +17,6 @@
   };
   const KANTEI_KEYS = ["free", "honkan", "upsell"];
 
-  const PRIORITY = {
-    high: { label: "高", badge: "badge-prio-high" },
-    mid:  { label: "中", badge: "badge-prio-mid" },
-    low:  { label: "低", badge: "badge-prio-low" },
-  };
-
   // ---------------------------------------------------------
   // 状態管理 / 永続化
   // ---------------------------------------------------------
@@ -167,11 +161,6 @@
 
       const meta = el("div", { class: "task-meta" });
       if (typeMeta) meta.append(el("span", { class: "badge " + typeMeta.badge }, typeMeta.label));
-      if (task.priority) {
-        const p = PRIORITY[task.priority];
-        meta.append(el("span", { class: "badge " + p.badge }, "優先:" + p.label));
-      }
-      (task.tags || []).forEach((t) => meta.append(el("span", { class: "tag" }, "#" + t)));
       if (task.schedule === "daily") {
         meta.append(el("span", { class: "due" }, "🔁 毎日"));
       } else if (task.dueDate) {
@@ -202,7 +191,7 @@
 
   function toggleTask(id) {
     const t = state.tasks.find((x) => x.id === id);
-    if (t) { t.completed = !t.completed; save(); renderTasks(); }
+    if (t) { t.completed = !t.completed; save(); renderTasks(); renderCalendar(); }
   }
 
   function deleteTask(id) {
@@ -210,6 +199,7 @@
     state.tasks = state.tasks.filter((x) => x.id !== id);
     save();
     renderTasks();
+    renderCalendar();
   }
 
   // =========================================================
@@ -220,7 +210,7 @@
     const linkedCustomer = editing && editing.customerId ? customerById(editing.customerId) : null;
     const data = editing || {
       type: "custom", title: "", customerId: "",
-      priority: "mid", schedule: "daily", dueDate: "", tags: [],
+      schedule: "daily", dueDate: "",
     };
 
     const form = el("form", { class: "task-form" });
@@ -266,12 +256,14 @@
       contentArea,
     );
 
-    // --- スケジュールセグメント（毎日 or 期限あり） ---
+    // --- スケジュールセグメント（タスク名入力のときのみ：毎日 or 期限あり） ---
     const scheduleSeg = el("div", { class: "seg" });
     const scheduleOptions = [
       { value: "daily", label: "毎日" },
       { value: "deadline", label: "期限あり" },
     ];
+    const scheduleField = el("div", { class: "field" },
+      el("label", {}, "スケジュール"), scheduleSeg);
     const dueField = el("div", { class: "field" },
       el("label", {}, "期限"),
       el("input", { type: "date", name: "dueDate", value: data.dueDate || "" }),
@@ -280,13 +272,16 @@
     function refreshUI() {
       typeSeg.querySelectorAll(".seg-option").forEach((o) =>
         o.classList.toggle("is-selected", o.dataset.value === currentType));
+      const isCustom = currentType === "custom";
+      // 鑑定タスク（無料鑑定/本鑑定/アップセル）は「期限」のみ
+      if (!isCustom) schedule = "deadline";
       scheduleSeg.querySelectorAll(".seg-option").forEach((o) =>
         o.classList.toggle("is-selected", o.dataset.value === schedule));
-      const isCustom = currentType === "custom";
       titleField.style.display = isCustom ? "block" : "none";
       customerNameField.style.display = isCustom ? "none" : "block";
       contentField.style.display = isCustom ? "none" : "block";
-      dueField.style.display = schedule === "deadline" ? "block" : "none";
+      scheduleField.style.display = isCustom ? "block" : "none";
+      dueField.style.display = (isCustom ? schedule === "deadline" : true) ? "block" : "none";
     }
 
     typeOptions.forEach((opt) => {
@@ -307,21 +302,13 @@
       scheduleSeg.append(o);
     });
 
-    const prioritySelect = el("select", { name: "priority" },
-      ...Object.entries(PRIORITY).map(([k, v]) =>
-        el("option", { value: k, selected: k === data.priority }, "優先度：" + v.label)),
-    );
-
     form.append(
       el("div", { class: "field" }, el("label", {}, "種別"), typeSeg),
       titleField,
       customerNameField,
       contentField,
-      el("div", { class: "field" }, el("label", {}, "スケジュール"), scheduleSeg),
+      scheduleField,
       dueField,
-      el("div", { class: "field" }, el("label", {}, "優先度"), prioritySelect),
-      el("div", { class: "field" }, el("label", {}, "タグ（カンマ区切り）"),
-        el("input", { type: "text", name: "tags", value: (data.tags || []).join(", "), placeholder: "例：要フォロー, 常連" })),
       el("div", { class: "modal-actions" },
         el("button", { type: "button", class: "btn", onclick: closeModal }, "キャンセル"),
         el("button", { type: "submit", class: "btn btn-primary" }, editing ? "更新" : "追加"),
@@ -333,7 +320,6 @@
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       const fd = new FormData(form);
-      const tags = String(fd.get("tags") || "").split(",").map((s) => s.trim()).filter(Boolean);
 
       if (currentType === "custom" && !String(fd.get("title")).trim()) {
         alert("タスク名を入力してください。");
@@ -357,10 +343,8 @@
         type: currentType,
         title: currentType === "custom" ? String(fd.get("title")).trim() : "",
         customerId,
-        priority: String(fd.get("priority")),
         schedule,
         dueDate: schedule === "deadline" ? String(fd.get("dueDate") || "") : "",
-        tags,
       };
 
       if (editing) {
@@ -371,6 +355,7 @@
       save();
       renderTasks();
       renderCustomers();
+      renderCalendar();
       closeModal();
     });
 
@@ -476,6 +461,10 @@
         ),
         el("div", { class: "row-actions" },
           el("button", {
+            class: "btn btn-sm",
+            onclick: (e) => { e.stopPropagation(); openCustomerResults(c.id); },
+          }, "鑑定結果"),
+          el("button", {
             class: "btn btn-sm btn-danger",
             onclick: (e) => { e.stopPropagation(); deleteCustomer(c.id); },
           }, "削除"),
@@ -519,21 +508,6 @@
       typeChecks.append(el("label", { class: "check-row" }, input, KANTEI[k].label));
     });
 
-    // 鑑定結果テキストエリア
-    const resultInputs = {};
-    const resultsWrap = el("div", {});
-    KANTEI_KEYS.forEach((k) => {
-      const ta = el("textarea", { placeholder: KANTEI[k].label + "の結果…" });
-      ta.value = (data.results && data.results[k]) || "";
-      resultInputs[k] = ta;
-      resultsWrap.append(
-        el("div", { class: "result-block" },
-          el("div", { class: "result-head" }, el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label)),
-          ta,
-        ),
-      );
-    });
-
     form.append(
       el("div", { class: "field" },
         el("label", {}, "顧客名"),
@@ -543,13 +517,15 @@
         el("label", {}, "この顧客で扱う鑑定タイプ"),
         typeChecks,
       ),
-      el("hr", { class: "divider" }),
-      el("div", { class: "section-label" }, "鑑定結果の格納"),
-      resultsWrap,
       el("div", { class: "field" },
         el("label", {}, "メモ"),
         (() => { const t = el("textarea", { name: "memo", placeholder: "自由メモ…" }); t.value = data.memo || ""; return t; })(),
       ),
+      // 鑑定結果は専用ポップアップで編集（既存顧客のみ）
+      editing
+        ? el("div", { class: "field" },
+            el("button", { type: "button", class: "btn", onclick: () => openCustomerResults(editing.id) }, "🔮 鑑定結果を入力・確認"))
+        : el("p", { class: "hint" }, "鑑定結果は登録後に「鑑定結果」ボタンから入力できます。"),
       el("div", { class: "modal-actions" },
         editing ? el("button", { type: "button", class: "btn btn-danger", onclick: () => deleteCustomer(editing.id) }, "削除") : null,
         el("button", { type: "button", class: "btn", onclick: closeModal }, "キャンセル"),
@@ -564,18 +540,17 @@
       if (!name) { alert("顧客名を入力してください。"); return; }
 
       const kanteiTypes = {};
-      const results = {};
-      KANTEI_KEYS.forEach((k) => {
-        kanteiTypes[k] = checkInputs[k].checked;
-        results[k] = resultInputs[k].value;
-      });
-
-      const payload = { name, kanteiTypes, results, memo: String(fd.get("memo") || "") };
+      KANTEI_KEYS.forEach((k) => { kanteiTypes[k] = checkInputs[k].checked; });
 
       if (editing) {
-        Object.assign(editing, payload);
+        editing.name = name;
+        editing.kanteiTypes = kanteiTypes;
+        editing.memo = String(fd.get("memo") || "");
       } else {
-        state.customers.push({ id: uid(), createdAt: Date.now(), ...payload });
+        state.customers.push({
+          id: uid(), createdAt: Date.now(), name, kanteiTypes,
+          results: { free: "", honkan: "", upsell: "" }, memo: String(fd.get("memo") || ""),
+        });
       }
       save();
       renderCustomers();
@@ -586,13 +561,142 @@
     openModal(editing ? "顧客を編集" : "新規顧客", form);
   }
 
+  // =========================================================
+  // 顧客：鑑定結果ポップアップ
+  // =========================================================
+  function openCustomerResults(id) {
+    const customer = customerById(id);
+    if (!customer) return;
+    customer.results = customer.results || { free: "", honkan: "", upsell: "" };
+
+    const body = el("div", {});
+    const inputs = {};
+    KANTEI_KEYS.forEach((k) => {
+      const ta = el("textarea", { placeholder: KANTEI[k].label + "の結果…" });
+      ta.value = customer.results[k] || "";
+      inputs[k] = ta;
+      body.append(
+        el("div", { class: "result-block" },
+          el("div", { class: "result-head" }, el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label)),
+          ta,
+        ),
+      );
+    });
+
+    body.append(
+      el("div", { class: "modal-actions" },
+        el("button", { type: "button", class: "btn", onclick: closeModal }, "閉じる"),
+        el("button", {
+          type: "button", class: "btn btn-primary",
+          onclick: () => {
+            KANTEI_KEYS.forEach((k) => { customer.results[k] = inputs[k].value; });
+            save();
+            closeModal();
+          },
+        }, "保存"),
+      ),
+    );
+
+    openModal(customer.name + " さんの鑑定結果", body);
+  }
+
+  // =========================================================
+  // カレンダー（期限の可視化）
+  // =========================================================
+  const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
+  const calRef = new Date();
+  calRef.setDate(1);
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  function renderCalendar() {
+    const cal = $("#calendar");
+    if (!cal) return;
+    cal.replaceChildren();
+
+    const year = calRef.getFullYear();
+    const month = calRef.getMonth();
+    $("#cal-title").textContent = `${year}年 ${month + 1}月`;
+
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const todayStr = toISO(new Date());
+
+    // 曜日ヘッダー
+    WEEK.forEach((w, i) => {
+      cal.append(el("div", {
+        class: "cal-cell cal-head-cell" + (i === 0 ? " sun" : i === 6 ? " sat" : ""),
+      }, w));
+    });
+    // 月初までの空セル
+    for (let i = 0; i < firstWeekday; i++) cal.append(el("div", { class: "cal-cell cal-empty" }));
+
+    // 日付セル
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+      const weekday = new Date(year, month, d).getDay();
+      const dayTasks = state.tasks.filter((t) => t.schedule !== "daily" && t.dueDate === dateStr);
+      const hasOverdue = dayTasks.some((t) => !t.completed && dateStr < todayStr);
+
+      const cell = el("div", {
+        class: "cal-cell cal-day"
+          + (dateStr === todayStr ? " is-today" : "")
+          + (dayTasks.length ? " has-task" : ""),
+      });
+      cell.append(el("div", {
+        class: "cal-num" + (weekday === 0 ? " sun" : weekday === 6 ? " sat" : ""),
+      }, String(d)));
+
+      if (dayTasks.length) {
+        cell.append(el("div", { class: "cal-dot" + (hasOverdue ? " overdue" : "") },
+          dayTasks.length > 1 ? String(dayTasks.length) : ""));
+        cell.style.cursor = "pointer";
+        cell.addEventListener("click", () => openDayTasks(dateStr));
+      }
+      cal.append(cell);
+    }
+  }
+
+  function openDayTasks(dateStr) {
+    const tasks = state.tasks.filter((t) => t.schedule !== "daily" && t.dueDate === dateStr);
+    const body = el("div", {});
+    const list = el("ul", { class: "task-list" });
+
+    tasks.forEach((task) => {
+      const customer = task.customerId ? customerById(task.customerId) : null;
+      const typeMeta = task.type !== "custom" ? KANTEI[task.type] : null;
+      const title = task.type === "custom"
+        ? task.title
+        : `${customer ? customer.name + "さん｜" : ""}${typeMeta.label}`;
+
+      list.append(el("li", { class: "task-item" + (task.completed ? " is-done" : "") },
+        el("input", {
+          type: "checkbox", class: "task-check", checked: task.completed,
+          onchange: () => { toggleTask(task.id); openDayTasks(dateStr); },
+        }),
+        el("div", { class: "task-main" }, el("div", { class: "task-title" }, title)),
+      ));
+    });
+
+    if (!tasks.length) body.append(el("p", { class: "hint" }, "この日のタスクはありません。"));
+    else body.append(list);
+    body.append(el("div", { class: "modal-actions" },
+      el("button", { class: "btn", onclick: closeModal }, "閉じる")));
+
+    openModal(`${calRef.getFullYear()}/${formatDate(dateStr)} のタスク`, body);
+  }
+
   // ---------------------------------------------------------
   // イベント結線 & 初期描画
   // ---------------------------------------------------------
   $("#new-task-btn").addEventListener("click", () => openTaskForm());
   $("#new-customer-btn").addEventListener("click", () => openCustomerForm());
+  $("#cal-prev").addEventListener("click", () => { calRef.setMonth(calRef.getMonth() - 1); renderCalendar(); });
+  $("#cal-next").addEventListener("click", () => { calRef.setMonth(calRef.getMonth() + 1); renderCalendar(); });
 
   applyTheme();
   renderTasks();
   renderCustomers();
+  renderCalendar();
 })();

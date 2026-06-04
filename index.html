@@ -27,6 +27,16 @@
       </div>
       <ul id="task-list" class="task-list"></ul>
       <p id="task-empty" class="empty-state">タスクがありません。「＋ 新規タスク」から追加してください。</p>
+
+      <section class="calendar-section">
+        <div class="cal-head">
+          <button id="cal-prev" class="btn btn-sm" aria-label="前の月">‹</button>
+          <h3 id="cal-title"></h3>
+          <button id="cal-next" class="btn btn-sm" aria-label="次の月">›</button>
+        </div>
+        <div id="calendar" class="calendar"></div>
+        <p class="cal-legend">📅 期限のあるタスクがある日に印が付きます（赤は期限切れ）。日付をクリックで内容を表示。</p>
+      </section>
     </section>
 
     <!-- ===== 顧客管理ビュー ===== -->

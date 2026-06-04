@@ -129,6 +129,7 @@ body {
   border-radius: 10px;
   padding: 12px 14px;
 }
+.task-item.is-done { opacity: 0.45; background: var(--surface-2); }
 .task-item.is-done .task-title { text-decoration: line-through; color: var(--text-muted); }
 
 .task-check { width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary); flex-shrink: 0; }
@@ -265,3 +266,57 @@ body {
 .result-block .result-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 
 .hint { font-size: 0.8rem; color: var(--text-muted); margin-top: -8px; margin-bottom: 14px; }
+
+/* ===== カレンダー ===== */
+.calendar-section { margin-top: 32px; }
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+.cal-head h3 { margin: 0; font-size: 1.05rem; min-width: 130px; text-align: center; }
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+.cal-cell { min-height: 60px; }
+.cal-head-cell {
+  min-height: auto;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+.cal-empty { background: transparent; }
+.cal-day {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 6px;
+}
+.cal-day.is-today { border-color: var(--primary); border-width: 2px; }
+.cal-num { font-size: 0.82rem; }
+.cal-day.has-task .cal-num { font-weight: 700; }
+.cal-num.sun, .cal-head-cell.sun { color: #e0566b; }
+.cal-num.sat, .cal-head-cell.sat { color: #4a8fe0; }
+.cal-dot {
+  margin-top: 6px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 20px;
+  height: 18px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+.cal-dot.overdue { background: var(--danger); }
+.cal-legend { font-size: 0.78rem; color: var(--text-muted); margin-top: 12px; text-align: center; }
