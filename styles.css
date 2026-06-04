@@ -193,6 +193,8 @@ body {
   padding: 16px;
   z-index: 100;
 }
+/* hidden 属性が付いている間は確実に非表示にする（display:flex の上書き対策） */
+.modal-overlay[hidden] { display: none; }
 .modal {
   background: var(--surface);
   border-radius: 14px;
