@@ -304,6 +304,7 @@ body {
 .result-menu .btn { width: 100%; padding: 12px; }
 .result-block { margin-bottom: 14px; }
 .result-block .result-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.copy-note { margin-left: auto; font-size: 0.78rem; color: var(--free); font-weight: 700; }
 /* 鑑定結果欄：伸縮させず、固定の高さでぱっと見で読める */
 .result-block textarea {
   width: 100%;

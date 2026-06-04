@@ -17,8 +17,8 @@
   };
   const KANTEI_KEYS = ["free", "honkan", "upsell"];
 
-  /** 顧客のフェーズ（営業段階） */
-  const PHASES = ["見込み", "無料鑑定", "本鑑定", "アップセル", "リピート"];
+  /** 顧客のフェーズ（営業段階）。全員「無料鑑定」から始まる */
+  const PHASES = ["無料鑑定", "本鑑定", "アップセル", "リピート"];
   const formatYen = (n) => "¥" + (Number(n) || 0).toLocaleString("ja-JP");
 
   // ---------------------------------------------------------
@@ -34,7 +34,7 @@
     } catch (e) {
       console.warn("データ読み込みに失敗しました", e);
     }
-    return { customers: [], tasks: [], settings: { theme: "light" } };
+    return { customers: [], tasks: [], settings: { theme: "light", lastDailyReset: "" } };
   }
 
   function save() {
@@ -100,6 +100,53 @@
   const pad = (n) => String(n).padStart(2, "0");
   const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const todayISO = () => toISO(new Date());
+
+  /** クリップボードへコピー（file:// でも動くようフォールバック付き） */
+  function copyToClipboard(text) {
+    if (!text) return false;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+      return true;
+    }
+    return fallbackCopy(text);
+  }
+  function fallbackCopy(text) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** 毎日のタスクは日付が変わったら（24時に）チェックを全て外す */
+  function resetDailyIfNeeded() {
+    const today = todayISO();
+    if (state.settings.lastDailyReset === today) return;
+    state.tasks.forEach((t) => { if (t.schedule === "daily") t.completed = false; });
+    state.settings.lastDailyReset = today;
+    save();
+  }
+
+  /** 次の0:00にリセット＆再描画をスケジュール（起動中に日付が変わった場合の対応） */
+  function scheduleMidnightReset() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+    setTimeout(() => {
+      resetDailyIfNeeded();
+      renderTasks();
+      renderCalendar();
+      scheduleMidnightReset();
+    }, next - now);
+  }
 
   // ---------------------------------------------------------
   // テーマ（ダークモード）
@@ -294,7 +341,8 @@
       typeSeg.querySelectorAll(".seg-option").forEach((o) =>
         o.classList.toggle("is-selected", o.dataset.value === currentType));
       const isCustom = currentType === "custom";
-      // 鑑定タスク（無料鑑定/本鑑定/アップセル）は「期限」のみ
+      const isFree = currentType === "free";
+      // 鑑定タスク（本鑑定/アップセル）は「期限」のみ。無料鑑定は期限なし
       if (!isCustom) schedule = "deadline";
       scheduleSeg.querySelectorAll(".seg-option").forEach((o) =>
         o.classList.toggle("is-selected", o.dataset.value === schedule));
@@ -302,7 +350,9 @@
       customerNameField.style.display = isCustom ? "none" : "block";
       contentField.style.display = isCustom ? "none" : "block";
       scheduleField.style.display = isCustom ? "block" : "none";
-      dueField.style.display = (isCustom ? schedule === "deadline" : true) ? "block" : "none";
+      // 無料鑑定は期限欄を出さない
+      const showDue = isCustom ? schedule === "deadline" : !isFree;
+      dueField.style.display = showDue ? "block" : "none";
     }
 
     typeOptions.forEach((opt) => {
@@ -360,12 +410,20 @@
         customerId = customer.id;
       }
 
+      // 期限：無料鑑定は欄がないので作成日（今日）を期限扱いにして「今日のタスク」に出す
+      let dueDate = "";
+      if (currentType === "free") {
+        dueDate = data.dueDate || todayISO();
+      } else if (schedule === "deadline") {
+        dueDate = String(fd.get("dueDate") || "");
+      }
+
       const payload = {
         type: currentType,
         title: currentType === "custom" ? String(fd.get("title")).trim() : "",
         customerId,
         schedule,
-        dueDate: schedule === "deadline" ? String(fd.get("dueDate") || "") : "",
+        dueDate,
       };
 
       if (editing) {
@@ -655,14 +713,27 @@
     } else {
       const ta = el("textarea", { placeholder: KANTEI[type].label + "の結果…" });
       ta.value = customer.results[type] || "";
+      const note = el("span", { class: "copy-note" });
+
+      // 無料鑑定をクリックしたら内容を自動でコピー
+      if (type === "free" && customer.results.free) {
+        if (copyToClipboard(customer.results.free)) note.textContent = "✓ 内容をコピーしました";
+      }
+
       body.append(
         el("div", { class: "result-block" },
           el("div", { class: "result-head" },
-            el("span", { class: "badge " + KANTEI[type].badge }, KANTEI[type].label + "結果")),
+            el("span", { class: "badge " + KANTEI[type].badge }, KANTEI[type].label + "結果"),
+            note,
+          ),
           ta,
         ),
         el("div", { class: "modal-actions" },
           el("button", { type: "button", class: "btn", onclick: () => openCustomerResults(id) }, "戻る"),
+          el("button", {
+            type: "button", class: "btn",
+            onclick: () => { if (copyToClipboard(ta.value)) note.textContent = "✓ コピーしました"; },
+          }, "📋 コピー"),
           el("button", {
             type: "button", class: "btn btn-primary",
             onclick: () => { customer.results[type] = ta.value; save(); closeModal(); },
@@ -768,6 +839,16 @@
   $("#new-customer-btn").addEventListener("click", () => openCustomerForm());
   $("#cal-prev").addEventListener("click", () => { calRef.setMonth(calRef.getMonth() - 1); renderCalendar(); });
   $("#cal-next").addEventListener("click", () => { calRef.setMonth(calRef.getMonth() + 1); renderCalendar(); });
+
+  // 既存データの移行：削除した「見込み」フェーズなどを補正
+  let migrated = false;
+  state.customers.forEach((c) => {
+    if (!PHASES.includes(c.phase)) { c.phase = PHASES[0]; migrated = true; }
+  });
+  if (migrated) save();
+
+  resetDailyIfNeeded();   // 日付が変わっていれば毎日のタスクのチェックを外す
+  scheduleMidnightReset(); // 起動中の0:00リセットを予約
 
   applyTheme();
   renderTasks();
