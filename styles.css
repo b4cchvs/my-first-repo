@@ -165,6 +165,7 @@ body {
 .badge-honkan { background: var(--honkan); }
 .badge-upsell { background: var(--upsell); }
 .badge-custom { background: var(--text-muted); }
+.badge-plan { background: #b8860b; }
 .badge-prio-high { background: var(--prio-high); }
 .badge-prio-mid { background: var(--prio-mid); }
 .badge-prio-low { background: var(--prio-low); }

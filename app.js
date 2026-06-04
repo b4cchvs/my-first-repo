@@ -19,6 +19,9 @@
 
   /** 顧客のフェーズ（営業段階）。全員「無料鑑定」から始まる */
   const PHASES = ["無料鑑定", "本鑑定", "アップセル", "リピート"];
+
+  /** 本鑑定の鑑定プラン（松竹梅） */
+  const PLANS = ["松", "竹", "梅"];
   const formatYen = (n) => "¥" + (Number(n) || 0).toLocaleString("ja-JP");
 
   // ---------------------------------------------------------
@@ -210,6 +213,9 @@
     // スケジュール表示（完了時は「✅ 完了」で分かりやすく）
     const meta = el("div", { class: "task-meta" });
     if (typeMeta) meta.append(el("span", { class: "badge " + typeMeta.badge }, typeMeta.label));
+    if (task.type === "honkan" && task.plan) {
+      meta.append(el("span", { class: "badge badge-plan" }, "プラン:" + task.plan));
+    }
     if (task.schedule === "daily") {
       meta.append(el("span", { class: "due" }, "🔁 毎日"));
     } else if (task.completed) {
@@ -285,6 +291,7 @@
 
     let currentType = data.type;
     let schedule = data.schedule || (data.dueDate ? "deadline" : "daily");
+    let plan = data.plan || (linkedCustomer && linkedCustomer.honkanPlan) || PLANS[0];
 
     // --- 種別セグメント（タスク名 or 鑑定タイプ） ---
     const typeSeg = el("div", { class: "seg" });
@@ -313,6 +320,11 @@
       }),
       datalist,
     );
+
+    // 鑑定プランフィールド（本鑑定のとき・松竹梅）
+    const planSeg = el("div", { class: "seg" });
+    const planField = el("div", { class: "field" },
+      el("label", {}, "鑑定プラン"), planSeg);
 
     // 鑑定内容フィールド（鑑定のとき）
     const contentArea = el("textarea", { name: "content", placeholder: "鑑定内容・結果をここに記録…" });
@@ -346,9 +358,12 @@
       if (!isCustom) schedule = "deadline";
       scheduleSeg.querySelectorAll(".seg-option").forEach((o) =>
         o.classList.toggle("is-selected", o.dataset.value === schedule));
+      planSeg.querySelectorAll(".seg-option").forEach((o) =>
+        o.classList.toggle("is-selected", o.dataset.value === plan));
       titleField.style.display = isCustom ? "block" : "none";
       customerNameField.style.display = isCustom ? "none" : "block";
       contentField.style.display = isCustom ? "none" : "block";
+      planField.style.display = currentType === "honkan" ? "block" : "none";
       scheduleField.style.display = isCustom ? "block" : "none";
       // 無料鑑定は期限欄を出さない
       const showDue = isCustom ? schedule === "deadline" : !isFree;
@@ -372,11 +387,17 @@
       o.addEventListener("click", () => { schedule = opt.value; refreshUI(); });
       scheduleSeg.append(o);
     });
+    PLANS.forEach((value) => {
+      const o = el("label", { class: "seg-option", dataset: { value } }, value);
+      o.addEventListener("click", () => { plan = value; refreshUI(); });
+      planSeg.append(o);
+    });
 
     form.append(
       el("div", { class: "field" }, el("label", {}, "種別"), typeSeg),
       titleField,
       customerNameField,
+      planField,
       contentField,
       scheduleField,
       dueField,
@@ -407,6 +428,7 @@
         const customer = findOrCreateCustomer(String(fd.get("customerName")));
         customer.kanteiTypes[currentType] = true;
         customer.results[currentType] = String(fd.get("content") || "");
+        if (currentType === "honkan") customer.honkanPlan = plan;
         customerId = customer.id;
       }
 
@@ -422,6 +444,7 @@
         type: currentType,
         title: currentType === "custom" ? String(fd.get("title")).trim() : "",
         customerId,
+        plan: currentType === "honkan" ? plan : "",
         schedule,
         dueDate,
       };
@@ -724,6 +747,9 @@
         el("div", { class: "result-block" },
           el("div", { class: "result-head" },
             el("span", { class: "badge " + KANTEI[type].badge }, KANTEI[type].label + "結果"),
+            type === "honkan" && customer.honkanPlan
+              ? el("span", { class: "badge badge-plan" }, "プラン:" + customer.honkanPlan)
+              : null,
             note,
           ),
           ta,
