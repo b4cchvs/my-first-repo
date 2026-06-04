@@ -186,22 +186,39 @@ body {
 
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
-/* ===== 顧客一覧 ===== */
-.customer-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* ===== 顧客一覧（テーブル） ===== */
+.customer-list { display: block; overflow-x: auto; }
+.customer-table {
+  width: 100%;
+  border-collapse: collapse;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 14px;
-  cursor: pointer;
+  overflow: hidden;
 }
-.customer-info { min-width: 0; }
-.customer-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.customer-table th,
+.customer-table td {
+  padding: 11px 14px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+}
+.customer-table thead th {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.customer-table tbody tr:last-child td { border-bottom: none; }
+.customer-table tbody tr:hover { background: var(--surface-2); }
 .customer-name { font-weight: 700; }
-.customer-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.ltv { font-weight: 700; color: var(--text); }
+.td-name { cursor: pointer; }
+.td-name .task-meta { margin-top: 5px; }
+.td-ltv { font-weight: 700; white-space: nowrap; }
+.td-actions { text-align: right; white-space: nowrap; }
+.td-actions .btn { margin-left: 6px; }
+.th-actions { width: 1%; }
 .badge-phase { background: var(--text-muted); }
 
 /* ===== モーダル ===== */

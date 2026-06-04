@@ -467,29 +467,35 @@
   function renderCustomers() {
     customerList.replaceChildren();
     customerEmpty.style.display = state.customers.length ? "none" : "block";
+    if (!state.customers.length) return;
 
-    for (const c of state.customers) {
-      const badges = el("div", { class: "task-meta" });
-      KANTEI_KEYS.forEach((k) => {
-        if (c.kanteiTypes && c.kanteiTypes[k]) {
-          badges.append(el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label));
-        }
-      });
-
-      const item = el("li", { class: "customer-item", onclick: () => openCustomerForm(c.id) },
-        el("div", { class: "customer-info" },
-          // 顧客名 ＋ フェーズ
-          el("div", { class: "customer-line" },
-            el("span", { class: "customer-name" }, c.name),
-            el("span", { class: "badge badge-phase" }, c.phase || PHASES[0]),
-          ),
-          // LTV ＋ 鑑定タイプ
-          el("div", { class: "customer-sub" },
-            el("span", { class: "ltv" }, "LTV " + formatYen(c.ltv)),
-            badges.children.length ? badges : null,
-          ),
+    const table = el("table", { class: "customer-table" },
+      el("thead", {},
+        el("tr", {},
+          el("th", {}, "顧客名"),
+          el("th", {}, "フェーズ"),
+          el("th", {}, "LTV"),
+          el("th", { class: "th-actions" }, ""),
         ),
-        el("div", { class: "row-actions" },
+      ),
+    );
+
+    const tbody = el("tbody", {});
+    for (const c of state.customers) {
+      const kantei = KANTEI_KEYS.filter((k) => c.kanteiTypes && c.kanteiTypes[k]);
+
+      const row = el("tr", { class: "customer-row" },
+        // 顧客名（クリックで編集）＋ 鑑定タイプバッジ
+        el("td", { class: "td-name", onclick: () => openCustomerForm(c.id) },
+          el("span", { class: "customer-name" }, c.name),
+          kantei.length
+            ? el("div", { class: "task-meta" },
+                ...kantei.map((k) => el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label)))
+            : null,
+        ),
+        el("td", {}, el("span", { class: "badge badge-phase" }, c.phase || PHASES[0])),
+        el("td", { class: "td-ltv" }, formatYen(c.ltv)),
+        el("td", { class: "td-actions" },
           el("button", {
             class: "btn btn-sm",
             onclick: (e) => { e.stopPropagation(); openCustomerResults(c.id); },
@@ -500,8 +506,11 @@
           }, "削除"),
         ),
       );
-      customerList.append(item);
+      tbody.append(row);
     }
+
+    table.append(tbody);
+    customerList.append(table);
   }
 
   function deleteCustomer(id) {
