@@ -189,6 +189,22 @@ body {
 
 /* ===== 顧客一覧（テーブル） ===== */
 .customer-list { display: block; overflow-x: auto; }
+
+/* フェーズ表示フィルター */
+.phase-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.filter-label { font-size: 0.82rem; color: var(--text-muted); font-weight: 700; }
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip:hover { background: var(--surface-2); }
+.chip.is-on { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
 .customer-table {
   width: 100%;
   border-collapse: collapse;

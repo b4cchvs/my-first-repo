@@ -578,11 +578,18 @@
   }
 
   const PHASE_ORDER = { "無料鑑定": 0, "本鑑定": 1, "アップセル": 2, "リピート": 3 };
-  let customerSort = { key: "", dir: 1 }; // key: "phase" など / dir: 1=昇順, -1=降順
+  let customerSort = { key: "", dir: 1 };        // key: "phase" | "ltv" / dir: 1=昇順, -1=降順
+  let phaseFilter = new Set(PHASES);              // 表示するフェーズ（初期は全表示）
 
   function toggleCustomerSort(key) {
     if (customerSort.key === key) customerSort.dir *= -1;
     else { customerSort.key = key; customerSort.dir = 1; }
+    renderCustomers();
+  }
+
+  function togglePhaseFilter(phase) {
+    if (phaseFilter.has(phase)) phaseFilter.delete(phase);
+    else phaseFilter.add(phase);
     renderCustomers();
   }
 
@@ -591,37 +598,46 @@
     customerEmpty.style.display = state.customers.length ? "none" : "block";
     if (!state.customers.length) return;
 
-    const arrow = customerSort.key === "phase" ? (customerSort.dir === 1 ? " ▲" : " ▼") : "";
+    // フェーズ表示フィルター
+    const filterBar = el("div", { class: "phase-filter" },
+      el("span", { class: "filter-label" }, "表示フェーズ："),
+      ...PHASES.map((p) =>
+        el("button", {
+          type: "button",
+          class: "chip" + (phaseFilter.has(p) ? " is-on" : ""),
+          onclick: () => togglePhaseFilter(p),
+        }, p)),
+    );
+    customerList.append(filterBar);
+
+    const arrowFor = (key) =>
+      customerSort.key === key ? (customerSort.dir === 1 ? " ▲" : " ▼") : "";
     const table = el("table", { class: "customer-table" },
       el("thead", {},
         el("tr", {},
           el("th", {}, "顧客名"),
-          el("th", { class: "th-sortable", onclick: () => toggleCustomerSort("phase") }, "フェーズ" + arrow),
-          el("th", {}, "LTV"),
+          el("th", { class: "th-sortable", onclick: () => toggleCustomerSort("phase") }, "フェーズ" + arrowFor("phase")),
+          el("th", { class: "th-sortable", onclick: () => toggleCustomerSort("ltv") }, "LTV" + arrowFor("ltv")),
           el("th", { class: "th-actions" }, ""),
         ),
       ),
     );
 
-    // 表示用に並べ替え（フェーズソート時）
-    const rows = [...state.customers];
+    // 並べ替え＋フィルター
+    let rows = state.customers.filter((c) => phaseFilter.has(computePhase(c)));
     if (customerSort.key === "phase") {
       rows.sort((a, b) =>
         ((PHASE_ORDER[computePhase(a)] ?? 99) - (PHASE_ORDER[computePhase(b)] ?? 99)) * customerSort.dir);
+    } else if (customerSort.key === "ltv") {
+      rows.sort((a, b) => ((a.ltv || 0) - (b.ltv || 0)) * customerSort.dir);
     }
 
     const tbody = el("tbody", {});
     for (const c of rows) {
-      const kantei = KANTEI_KEYS.filter((k) => c.kanteiTypes && c.kanteiTypes[k]);
-
       const row = el("tr", { class: "customer-row" },
-        // 顧客名（クリックで編集）＋ 鑑定タイプバッジ
+        // 顧客名（クリックで編集）
         el("td", { class: "td-name", onclick: () => openCustomerForm(c.id) },
           el("span", { class: "customer-name" }, c.name),
-          kantei.length
-            ? el("div", { class: "task-meta" },
-                ...kantei.map((k) => el("span", { class: "badge " + KANTEI[k].badge }, KANTEI[k].label)))
-            : null,
         ),
         el("td", {}, el("span", { class: "badge badge-phase" }, computePhase(c))),
         el("td", { class: "td-ltv" }, formatYen(c.ltv)),
@@ -641,6 +657,11 @@
 
     table.append(tbody);
     customerList.append(table);
+
+    if (!rows.length) {
+      customerList.append(el("p", { class: "hint", style: "margin-top:12px;text-align:center;" },
+        "表示中のフェーズに該当する顧客がいません。"));
+    }
   }
 
   function deleteCustomer(id) {
