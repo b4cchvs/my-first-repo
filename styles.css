@@ -211,6 +211,8 @@ body {
   background: var(--surface-2);
   white-space: nowrap;
 }
+.customer-table thead th.th-sortable { cursor: pointer; user-select: none; }
+.customer-table thead th.th-sortable:hover { color: var(--text); }
 .customer-table tbody tr:last-child td { border-bottom: none; }
 .customer-table tbody tr:hover { background: var(--surface-2); }
 .customer-name { font-weight: 700; }

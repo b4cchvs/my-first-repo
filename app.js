@@ -577,24 +577,41 @@
     return "無料鑑定"; // 無料のみ or 未着手 → 全員「無料鑑定」から
   }
 
+  const PHASE_ORDER = { "無料鑑定": 0, "本鑑定": 1, "アップセル": 2, "リピート": 3 };
+  let customerSort = { key: "", dir: 1 }; // key: "phase" など / dir: 1=昇順, -1=降順
+
+  function toggleCustomerSort(key) {
+    if (customerSort.key === key) customerSort.dir *= -1;
+    else { customerSort.key = key; customerSort.dir = 1; }
+    renderCustomers();
+  }
+
   function renderCustomers() {
     customerList.replaceChildren();
     customerEmpty.style.display = state.customers.length ? "none" : "block";
     if (!state.customers.length) return;
 
+    const arrow = customerSort.key === "phase" ? (customerSort.dir === 1 ? " ▲" : " ▼") : "";
     const table = el("table", { class: "customer-table" },
       el("thead", {},
         el("tr", {},
           el("th", {}, "顧客名"),
-          el("th", {}, "フェーズ"),
+          el("th", { class: "th-sortable", onclick: () => toggleCustomerSort("phase") }, "フェーズ" + arrow),
           el("th", {}, "LTV"),
           el("th", { class: "th-actions" }, ""),
         ),
       ),
     );
 
+    // 表示用に並べ替え（フェーズソート時）
+    const rows = [...state.customers];
+    if (customerSort.key === "phase") {
+      rows.sort((a, b) =>
+        ((PHASE_ORDER[computePhase(a)] ?? 99) - (PHASE_ORDER[computePhase(b)] ?? 99)) * customerSort.dir);
+    }
+
     const tbody = el("tbody", {});
-    for (const c of state.customers) {
+    for (const c of rows) {
       const kantei = KANTEI_KEYS.filter((k) => c.kanteiTypes && c.kanteiTypes[k]);
 
       const row = el("tr", { class: "customer-row" },
