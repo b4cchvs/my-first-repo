@@ -40,7 +40,11 @@
     } catch (e) {
       console.warn("データ読み込みに失敗しました", e);
     }
-    return { customers: [], tasks: [], settings: { theme: "light", lastDailyReset: "" } };
+    return {
+      customers: [], tasks: [],
+      settings: { theme: "light", lastDailyReset: "" },
+      character: { name: "ぼうけんしゃ", icon: "🧙" },
+    };
   }
 
   function save() {
@@ -264,6 +268,7 @@
 
     renderTaskColumn(dailyList, dailyEmpty, dailyTasks);
     renderTaskColumn(todayList, todayEmpty, todayTasks);
+    renderCharacter();
   }
 
   function toggleTask(id) {
@@ -657,6 +662,7 @@
 
     table.append(tbody);
     customerList.append(table);
+    renderCharacter();
 
     if (!rows.length) {
       customerList.append(el("p", { class: "hint", style: "margin-top:12px;text-align:center;" },
@@ -909,6 +915,109 @@
     openModal(`${calRef.getFullYear()}/${formatDate(dateStr)} のタスク`, body);
   }
 
+  // =========================================================
+  // キャラクター＆ステータス（ドラクエ風）
+  // =========================================================
+  const CHAR_ICONS = ["🧙", "🧙‍♀️", "🦸", "🦸‍♀️", "🧝", "🧚", "🔮", "🐉", "🦄", "🐱", "⚔️", "👑"];
+  const DEFAULT_CHAR = { name: "ぼうけんしゃ", icon: "🧙" };
+
+  /** ステータスはアプリの活動量から自動算出（ゲーミフィケーション） */
+  function computeStats() {
+    const tasks = state.tasks;
+    const completed = tasks.filter((t) => t.completed).length;
+    const honkanDone = tasks.filter((t) => t.completed && t.type === "honkan").length;
+    const freeDone = tasks.filter((t) => t.completed && t.type === "free").length;
+    const upsellDone = tasks.filter((t) => t.completed && t.type === "upsell").length;
+    const customers = state.customers.length;
+    const gold = state.customers.reduce((s, c) => s + (c.ltv || 0), 0);
+    const level = 1 + Math.floor(completed / 10);
+    return {
+      level,
+      hp: 100 + level * 20 + honkanDone * 10,
+      mp: 50 + level * 10 + freeDone * 5,
+      power: completed * 3 + honkanDone * 10,
+      charm: customers * 5 + upsellDone * 15,
+      gold,
+    };
+  }
+
+  function statRow(label, value) {
+    return el("div", { class: "dq-row" },
+      el("span", { class: "dq-label" }, label),
+      el("span", { class: "dq-value" }, String(value)),
+    );
+  }
+
+  function renderCharacter() {
+    const panel = $("#char-panel");
+    if (!panel) return;
+    const ch = state.character || DEFAULT_CHAR;
+    const s = computeStats();
+    panel.replaceChildren(
+      el("div", { class: "dq-window" },
+        el("div", { class: "dq-head" },
+          el("div", { class: "dq-icon" }, ch.icon),
+          el("div", { class: "dq-name" }, ch.name),
+          el("div", { class: "dq-lv" }, "Lv " + s.level),
+        ),
+        el("div", { class: "dq-stats" },
+          statRow("HP", s.hp),
+          statRow("MP", s.mp),
+          statRow("パワー", s.power),
+          statRow("チャーム", s.charm),
+          statRow("ゴールド", formatYen(s.gold).replace("¥", "") + " G"),
+        ),
+        el("button", { type: "button", class: "dq-edit", onclick: openCharacterEdit }, "なまえ・アイコン"),
+      ),
+    );
+  }
+
+  function openCharacterEdit() {
+    const ch = state.character || DEFAULT_CHAR;
+    let icon = ch.icon;
+
+    const iconGrid = el("div", { class: "icon-grid" });
+    CHAR_ICONS.forEach((ic) => {
+      const b = el("button", {
+        type: "button",
+        class: "icon-opt" + (ic === icon ? " is-selected" : ""),
+        dataset: { ic },
+        onclick: () => {
+          icon = ic;
+          iconGrid.querySelectorAll(".icon-opt").forEach((o) =>
+            o.classList.toggle("is-selected", o.dataset.ic === icon));
+        },
+      }, ic);
+      iconGrid.append(b);
+    });
+
+    const form = el("form", {},
+      el("div", { class: "field" },
+        el("label", {}, "なまえ"),
+        el("input", { type: "text", name: "name", value: ch.name, maxlength: "12", placeholder: "ぼうけんしゃ" }),
+      ),
+      el("div", { class: "field" },
+        el("label", {}, "アイコン"),
+        iconGrid,
+      ),
+      el("div", { class: "modal-actions" },
+        el("button", { type: "button", class: "btn", onclick: closeModal }, "キャンセル"),
+        el("button", { type: "submit", class: "btn btn-primary" }, "保存"),
+      ),
+    );
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      state.character = { name: String(fd.get("name")).trim() || DEFAULT_CHAR.name, icon };
+      save();
+      renderCharacter();
+      closeModal();
+    });
+
+    openModal("キャラクター設定", form);
+  }
+
   // ---------------------------------------------------------
   // イベント結線 & 初期描画
   // ---------------------------------------------------------
@@ -925,6 +1034,8 @@
   });
   if (migrated) save();
 
+  if (!state.character) state.character = { ...DEFAULT_CHAR };
+
   resetDailyIfNeeded();   // 日付が変わっていれば毎日のタスクのチェックを外す
   scheduleMidnightReset(); // 起動中の0:00リセットを予約
 
@@ -932,4 +1043,5 @@
   renderTasks();
   renderCustomers();
   renderCalendar();
+  renderCharacter();
 })();

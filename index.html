@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>鑑定タスク管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -26,28 +29,34 @@
         <button id="new-task-btn" class="btn btn-primary">＋ 新規タスク</button>
       </div>
 
-      <div class="task-columns">
-        <div class="task-col">
-          <h3 class="col-title">毎日のタスク</h3>
-          <ul id="daily-list" class="task-list"></ul>
-          <p id="daily-empty" class="empty-state">毎日のタスクはありません。</p>
-        </div>
-        <div class="task-col">
-          <h3 class="col-title">今日のタスク</h3>
-          <ul id="today-list" class="task-list"></ul>
-          <p id="today-empty" class="empty-state">今日締切のタスクはありません。</p>
-        </div>
-      </div>
+      <div class="tasks-layout">
+        <div class="tasks-main">
+          <div class="task-columns">
+            <div class="task-col">
+              <h3 class="col-title">毎日のタスク</h3>
+              <ul id="daily-list" class="task-list"></ul>
+              <p id="daily-empty" class="empty-state">毎日のタスクはありません。</p>
+            </div>
+            <div class="task-col">
+              <h3 class="col-title">今日のタスク</h3>
+              <ul id="today-list" class="task-list"></ul>
+              <p id="today-empty" class="empty-state">今日締切のタスクはありません。</p>
+            </div>
+          </div>
 
-      <section class="calendar-section">
-        <div class="cal-head">
-          <button id="cal-prev" class="btn btn-sm" aria-label="前の月">‹</button>
-          <h3 id="cal-title"></h3>
-          <button id="cal-next" class="btn btn-sm" aria-label="次の月">›</button>
+          <section class="calendar-section">
+            <div class="cal-head">
+              <button id="cal-prev" class="btn btn-sm" aria-label="前の月">‹</button>
+              <h3 id="cal-title"></h3>
+              <button id="cal-next" class="btn btn-sm" aria-label="次の月">›</button>
+            </div>
+            <div id="calendar" class="calendar"></div>
+            <p class="cal-legend">📅 期限のあるタスクがある日に印が付きます（赤は期限切れ）。日付をクリックで内容を表示。</p>
+          </section>
         </div>
-        <div id="calendar" class="calendar"></div>
-        <p class="cal-legend">📅 期限のあるタスクがある日に印が付きます（赤は期限切れ）。日付をクリックで内容を表示。</p>
-      </section>
+
+        <aside id="char-panel" class="char-panel"></aside>
+      </div>
     </section>
 
     <!-- ===== 顧客管理ビュー ===== -->
