@@ -85,7 +85,9 @@ body {
 }
 
 /* ===== メイン / ビュー ===== */
-.app-main { max-width: 900px; margin: 0 auto; padding: 24px; }
+.app-main { max-width: none; margin: 0 auto; padding: 24px; }
+/* 顧客管理は読みやすさ優先で中央寄せ／タスク一覧は全幅でステータスを右端に */
+#view-customers { max-width: 960px; margin: 0 auto; }
 .view { display: none; }
 .view.is-active { display: block; }
 
@@ -134,8 +136,8 @@ body {
 }
 
 /* ===== タスク一覧 ＋ キャラパネルのレイアウト ===== */
-.tasks-layout { display: flex; gap: 20px; align-items: flex-start; }
-.tasks-main { flex: 1; min-width: 0; }
+.tasks-layout { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; }
+.tasks-main { flex: 1 1 auto; min-width: 0; max-width: 980px; }
 .char-panel { width: 250px; flex-shrink: 0; position: sticky; top: 76px; }
 @media (max-width: 820px) {
   .tasks-layout { flex-direction: column; }
