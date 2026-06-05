@@ -20,9 +20,12 @@
   /** 顧客のフェーズ（営業段階）。全員「無料鑑定」から始まる */
   const PHASES = ["無料鑑定", "本鑑定", "アップセル", "リピート"];
 
-  /** 本鑑定の鑑定プラン（松竹梅） */
-  const PLANS = ["松", "竹", "梅"];
   const formatYen = (n) => "¥" + (Number(n) || 0).toLocaleString("ja-JP");
+
+  /** 本鑑定の鑑定プラン（松竹梅）と料金。LTVに自動加算される */
+  const PLANS = ["松", "竹", "梅"];
+  const PLAN_PRICE = { "松": 14800, "竹": 7980, "梅": 0 };
+  const planLabel = (p) => PLAN_PRICE[p] ? `${p}（${formatYen(PLAN_PRICE[p])}）` : p;
 
   // ---------------------------------------------------------
   // 状態管理 / 永続化
@@ -270,9 +273,16 @@
 
   function deleteTask(id) {
     if (!confirm("このタスクを削除しますか？")) return;
+    const task = state.tasks.find((x) => x.id === id);
+    // このタスクがLTVへ加算した分を取り消す
+    if (task && task.ltvApplied && task.customerId) {
+      const c = customerById(task.customerId);
+      if (c) c.ltv = Math.max(0, (c.ltv || 0) - task.ltvApplied);
+    }
     state.tasks = state.tasks.filter((x) => x.id !== id);
     save();
     renderTasks();
+    renderCustomers();
     renderCalendar();
   }
 
@@ -388,7 +398,7 @@
       scheduleSeg.append(o);
     });
     PLANS.forEach((value) => {
-      const o = el("label", { class: "seg-option", dataset: { value } }, value);
+      const o = el("label", { class: "seg-option", dataset: { value } }, planLabel(value));
       o.addEventListener("click", () => { plan = value; refreshUI(); });
       planSeg.append(o);
     });
@@ -422,13 +432,25 @@
         return;
       }
 
+      // 編集時：このタスクが過去にLTVへ加算した分を一旦取り消す（差分反映のため）
+      if (editing && editing.ltvApplied && editing.customerId) {
+        const oldCust = customerById(editing.customerId);
+        if (oldCust) oldCust.ltv = Math.max(0, (oldCust.ltv || 0) - editing.ltvApplied);
+      }
+
       // 鑑定タスクは顧客を find-or-create し、顧客管理へ自動登録
       let customerId = "";
+      let ltvApplied = 0;
       if (currentType !== "custom") {
         const customer = findOrCreateCustomer(String(fd.get("customerName")));
         customer.kanteiTypes[currentType] = true;
         customer.results[currentType] = String(fd.get("content") || "");
         if (currentType === "honkan") customer.honkanPlan = plan;
+        // 本鑑定のプラン料金を LTV に加算（松14,800 / 竹7,980 / 梅0）
+        if (currentType === "honkan") {
+          ltvApplied = PLAN_PRICE[plan] || 0;
+          customer.ltv = (customer.ltv || 0) + ltvApplied;
+        }
         customer.phase = computePhase(customer); // フェーズを自動更新
         customerId = customer.id;
       }
@@ -446,6 +468,7 @@
         title: currentType === "custom" ? String(fd.get("title")).trim() : "",
         customerId,
         plan: currentType === "honkan" ? plan : "",
+        ltvApplied,
         schedule,
         dueDate,
       };
