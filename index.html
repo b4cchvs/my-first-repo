@@ -63,7 +63,12 @@
     <section id="view-customers" class="view">
       <div class="view-bar">
         <h2 class="view-heading">顧客一覧</h2>
-        <button id="new-customer-btn" class="btn btn-primary">＋ 新規顧客</button>
+        <div class="bar-actions">
+          <button id="csv-export-btn" class="btn">⬇ CSV出力</button>
+          <button id="csv-import-btn" class="btn">⬆ CSV取込</button>
+          <input id="csv-file-input" type="file" accept=".csv,text/csv" hidden />
+          <button id="new-customer-btn" class="btn btn-primary">＋ 新規顧客</button>
+        </div>
       </div>
       <div id="customer-list" class="customer-list"></div>
       <p id="customer-empty" class="empty-state">顧客が登録されていません。「＋ 新規顧客」から追加してください。</p>

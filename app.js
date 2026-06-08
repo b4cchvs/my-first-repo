@@ -1018,11 +1018,146 @@
     openModal("キャラクター設定", form);
   }
 
+  // =========================================================
+  // 顧客データの CSV インポート / エクスポート
+  // =========================================================
+  const CSV_HEADERS = [
+    "顧客名", "フェーズ", "LTV",
+    "無料鑑定", "本鑑定", "アップセル", "本鑑定プラン",
+    "無料鑑定結果", "本鑑定結果", "アップセル結果", "メモ",
+  ];
+
+  function csvEscape(v) {
+    const s = String(v ?? "");
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM除去
+    const rows = [];
+    let row = [], field = "", inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else field += ch;
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field); field = "";
+      } else if (ch === "\n") {
+        row.push(field); rows.push(row); row = []; field = "";
+      } else if (ch !== "\r") {
+        field += ch;
+      }
+    }
+    if (field !== "" || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function downloadFile(content, filename, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = el("a", { href: url, download: filename });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportCustomersCSV() {
+    if (!state.customers.length) { alert("出力する顧客がいません。"); return; }
+    const rows = [CSV_HEADERS];
+    state.customers.forEach((c) => {
+      const k = c.kanteiTypes || {};
+      const r = c.results || {};
+      rows.push([
+        c.name || "", computePhase(c), c.ltv || 0,
+        k.free ? 1 : 0, k.honkan ? 1 : 0, k.upsell ? 1 : 0, c.honkanPlan || "",
+        r.free || "", r.honkan || "", r.upsell || "", c.memo || "",
+      ]);
+    });
+    const csv = "﻿" + rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
+    downloadFile(csv, `customers_${todayISO()}.csv`, "text/csv;charset=utf-8;");
+  }
+
+  function importCustomersCSV(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const rows = parseCSV(String(reader.result));
+        if (rows.length < 2) { alert("CSVにデータ行がありません。"); return; }
+
+        const header = rows[0].map((h) => h.trim());
+        const col = (name) => header.indexOf(name);
+        const dataRows = rows.slice(1).filter((r) => r.some((cell) => String(cell).trim() !== ""));
+        if (col("顧客名") < 0) { alert("「顧客名」列が見つかりません。"); return; }
+        if (!confirm(`${dataRows.length} 件を取り込みます。\n同じ顧客名は上書きされます。よろしいですか？`)) return;
+
+        const truthy = (v) => ["1", "○", "◯", "true", "TRUE", "yes", "はい"].includes(String(v).trim());
+        let added = 0, updated = 0;
+
+        dataRows.forEach((cols) => {
+          const get = (name) => { const i = col(name); return i >= 0 ? (cols[i] ?? "") : ""; };
+          const name = String(get("顧客名")).trim();
+          if (!name) return;
+
+          const kanteiTypes = {
+            free: truthy(get("無料鑑定")),
+            honkan: truthy(get("本鑑定")),
+            upsell: truthy(get("アップセル")),
+          };
+          const results = {
+            free: String(get("無料鑑定結果")),
+            honkan: String(get("本鑑定結果")),
+            upsell: String(get("アップセル結果")),
+          };
+          const ltv = Math.max(0, Number(String(get("LTV")).replace(/[^0-9.\-]/g, "")) || 0);
+          const honkanPlan = String(get("本鑑定プラン")).trim();
+          const memo = String(get("メモ"));
+
+          let c = state.customers.find((x) => x.name === name);
+          if (c) {
+            c.ltv = ltv; c.kanteiTypes = kanteiTypes; c.results = results;
+            if (honkanPlan) c.honkanPlan = honkanPlan;
+            c.memo = memo; c.phase = computePhase(c);
+            updated++;
+          } else {
+            c = {
+              id: uid(), createdAt: Date.now(), name, ltv, kanteiTypes, results,
+              honkanPlan, memo,
+            };
+            c.phase = computePhase(c);
+            state.customers.push(c);
+            added++;
+          }
+        });
+
+        save();
+        renderCustomers();
+        renderTasks();
+        alert(`インポート完了：新規 ${added} 件 / 更新 ${updated} 件`);
+      } catch (e) {
+        alert("CSVの読み込みに失敗しました：" + (e && e.message ? e.message : e));
+      }
+    };
+    reader.readAsText(file);
+  }
+
   // ---------------------------------------------------------
   // イベント結線 & 初期描画
   // ---------------------------------------------------------
   $("#new-task-btn").addEventListener("click", () => openTaskForm());
   $("#new-customer-btn").addEventListener("click", () => openCustomerForm());
+  $("#csv-export-btn").addEventListener("click", exportCustomersCSV);
+  $("#csv-import-btn").addEventListener("click", () => $("#csv-file-input").click());
+  $("#csv-file-input").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) importCustomersCSV(file);
+    e.target.value = ""; // 同じファイルを再選択できるようリセット
+  });
   $("#cal-prev").addEventListener("click", () => { calRef.setMonth(calRef.getMonth() - 1); renderCalendar(); });
   $("#cal-next").addEventListener("click", () => { calRef.setMonth(calRef.getMonth() + 1); renderCalendar(); });
 
