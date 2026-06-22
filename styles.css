@@ -136,10 +136,10 @@ body {
   .task-columns { flex-direction: column; }
 }
 
-/* ===== タスク一覧 ＋ キャラパネルのレイアウト ===== */
-.tasks-layout { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; }
-.tasks-main { flex: 1 1 auto; min-width: 0; max-width: 980px; }
-.char-panel { width: 250px; flex-shrink: 0; position: sticky; top: 76px; }
+/* ===== タスク一覧 ＋ キャラパネルのレイアウト（比率指定） ===== */
+.tasks-layout { display: flex; gap: 2%; align-items: flex-start; }
+.tasks-main { flex: 4 1 0; min-width: 0; }
+.char-panel { flex: 1 1 0; min-width: 0; position: sticky; top: 76px; }
 @media (max-width: 820px) {
   .tasks-layout { flex-direction: column; }
   .char-panel { width: 100%; position: static; }
