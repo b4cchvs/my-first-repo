@@ -361,7 +361,7 @@
       el("label", {}, "スケジュール"), scheduleSeg);
     const dueField = el("div", { class: "field" },
       el("label", {}, "期限"),
-      el("input", { type: "date", name: "dueDate", value: data.dueDate || "" }),
+      el("input", { type: "date", name: "dueDate", value: data.dueDate || todayISO() }),
     );
 
     function refreshUI() {
