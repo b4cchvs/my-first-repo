@@ -240,7 +240,6 @@
     const actions = el("div", { class: "row-actions" });
     if (opts.reorderable) {
       actions.append(
-        el("button", { class: "btn btn-sm btn-top", disabled: opts.isFirst, title: "最優先にする", onclick: () => moveTodayTop(task.id) }, "⭐最優先"),
         el("button", { class: "btn btn-sm btn-move", disabled: opts.isFirst, title: "順位を上げる", onclick: () => moveToday(task.id, -1) }, "↑"),
         el("button", { class: "btn btn-sm btn-move", disabled: opts.isLast, title: "順位を下げる", onclick: () => moveToday(task.id, 1) }, "↓"),
       );
