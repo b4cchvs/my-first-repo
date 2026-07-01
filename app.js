@@ -291,6 +291,16 @@
     renderTasks();
   }
 
+  /** 指定タスクが今日のタスクの先頭（最優先）かどうか */
+  function isTodayTop(task) {
+    if (!task || task.schedule === "daily") return false;
+    const today = todayISO();
+    const list = state.tasks
+      .filter((t) => t.schedule !== "daily" && t.dueDate === today)
+      .sort((a, b) => orderKey(a) - orderKey(b));
+    return list.length > 0 && list[0].id === task.id;
+  }
+
   /** 今日のタスクをワンクリックで最優先（先頭）に */
   function moveTodayTop(id) {
     const today = todayISO();
@@ -457,6 +467,12 @@
       planSeg.append(o);
     });
 
+    // 最優先チェック（今日のタスクで先頭に）。編集時に既に先頭ならON
+    const topCheck = el("input", { type: "checkbox", checked: editing ? isTodayTop(editing) : false });
+    const topField = el("div", { class: "field" },
+      el("label", { class: "check-row" }, topCheck, "⭐ 今日のタスクで最優先にする"),
+    );
+
     form.append(
       el("div", { class: "field" }, el("label", {}, "種別"), typeSeg),
       titleField,
@@ -465,6 +481,7 @@
       contentField,
       scheduleField,
       dueField,
+      topField,
       el("div", { class: "modal-actions" },
         el("button", { type: "button", class: "btn", onclick: closeModal }, "キャンセル"),
         el("button", { type: "submit", class: "btn btn-primary" }, editing ? "更新" : "追加"),
@@ -527,12 +544,17 @@
         dueDate,
       };
 
+      let taskId;
       if (editing) {
         Object.assign(editing, payload);
+        taskId = editing.id;
       } else {
-        state.tasks.push({ id: uid(), completed: false, createdAt: Date.now(), ...payload });
+        const newTask = { id: uid(), completed: false, createdAt: Date.now(), ...payload };
+        state.tasks.push(newTask);
+        taskId = newTask.id;
       }
       save();
+      if (topCheck.checked) moveTodayTop(taskId); // 最優先チェック時は先頭へ
       renderTasks();
       renderCustomers();
       renderCalendar();
