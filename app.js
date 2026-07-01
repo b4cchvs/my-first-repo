@@ -111,6 +111,9 @@
   const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const todayISO = () => toISO(new Date());
 
+  /** 今日のタスクの並び順キー（手動優先順位。未設定は作成日時） */
+  const orderKey = (t) => (t.order != null ? t.order : t.createdAt);
+
   /** クリップボードへコピー（file:// でも動くようフォールバック付き） */
   function copyToClipboard(text) {
     if (!text) return false;
@@ -208,8 +211,9 @@
   // =========================================================
   // タスク：レンダリング
   // =========================================================
-  /** 1件のタスク行を生成（毎日／今日の両カラム・日付ポップアップで共用） */
-  function buildTaskItem(task) {
+  /** 1件のタスク行を生成（毎日／今日の両カラム・日付ポップアップで共用）
+   *  opts.reorderable=true で優先順位（順位バッジ＋↑↓ボタン）を表示 */
+  function buildTaskItem(task, opts = {}) {
     const customer = task.customerId ? customerById(task.customerId) : null;
     const typeMeta = task.type !== "custom" ? KANTEI[task.type] : null;
 
@@ -233,41 +237,73 @@
       }, "📅 " + formatDate(task.dueDate)));
     }
 
+    const actions = el("div", { class: "row-actions" });
+    if (opts.reorderable) {
+      actions.append(
+        el("button", { class: "btn btn-sm btn-move", disabled: opts.isFirst, title: "順位を上げる", onclick: () => moveToday(task.id, -1) }, "↑"),
+        el("button", { class: "btn btn-sm btn-move", disabled: opts.isLast, title: "順位を下げる", onclick: () => moveToday(task.id, 1) }, "↓"),
+      );
+    }
+    actions.append(
+      el("button", { class: "btn btn-sm", onclick: () => openTaskForm(task.id) }, "編集"),
+      el("button", { class: "btn btn-sm btn-danger", onclick: () => deleteTask(task.id) }, "削除"),
+    );
+
     return el("li", { class: "task-item" + (task.completed ? " is-done" : "") },
       el("input", {
         type: "checkbox", class: "task-check", checked: task.completed,
         onchange: () => toggleTask(task.id),
       }),
       el("div", { class: "task-main", onclick: () => openTaskDetail(task.id) },
-        el("div", { class: "task-title" }, title),
+        el("div", { class: "task-title" },
+          opts.reorderable ? el("span", { class: "rank-badge" }, String(opts.rank)) : null,
+          title,
+        ),
         meta.children.length ? meta : null,
       ),
-      el("div", { class: "row-actions" },
-        el("button", { class: "btn btn-sm", onclick: () => openTaskForm(task.id) }, "編集"),
-        el("button", { class: "btn btn-sm btn-danger", onclick: () => deleteTask(task.id) }, "削除"),
-      ),
+      actions,
     );
   }
 
-  function renderTaskColumn(listEl, emptyEl, tasks) {
+  function renderTaskColumn(listEl, emptyEl, tasks, reorderable) {
     listEl.replaceChildren();
     emptyEl.style.display = tasks.length ? "none" : "block";
-    tasks.forEach((t) => listEl.append(buildTaskItem(t)));
+    tasks.forEach((t, i) => listEl.append(buildTaskItem(t, reorderable
+      ? { reorderable: true, rank: i + 1, isFirst: i === 0, isLast: i === tasks.length - 1 }
+      : {})));
+  }
+
+  /** 今日のタスクの優先順位を上下に移動 */
+  function moveToday(id, dir) {
+    const today = todayISO();
+    const list = state.tasks
+      .filter((t) => t.schedule !== "daily" && t.dueDate === today)
+      .sort((a, b) => orderKey(a) - orderKey(b));
+    const i = list.findIndex((t) => t.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    // 隣り合うタスクの並び順キーを入れ替え
+    const a = list[i], b = list[j];
+    const ak = orderKey(a), bk = orderKey(b);
+    a.order = bk; b.order = ak;
+    save();
+    renderTasks();
   }
 
   function renderTasks() {
-    // 未完了を上に、その後は作成日時順
-    const sortFn = (a, b) =>
-      a.completed !== b.completed ? (a.completed ? 1 : -1) : a.createdAt - b.createdAt;
-
     const today = todayISO();
-    // 毎日のタスク = スケジュール「毎日」／今日のタスク = 期限が今日のもの。それ以外は非表示
-    const dailyTasks = state.tasks.filter((t) => t.schedule === "daily").sort(sortFn);
-    const todayTasks = state.tasks
-      .filter((t) => t.schedule !== "daily" && t.dueDate === today).sort(sortFn);
+    // 毎日：未完了を上→作成順
+    const dailySort = (a, b) =>
+      a.completed !== b.completed ? (a.completed ? 1 : -1) : a.createdAt - b.createdAt;
+    // 今日：手動の優先順位（order）順
+    const todaySort = (a, b) => orderKey(a) - orderKey(b);
 
-    renderTaskColumn(dailyList, dailyEmpty, dailyTasks);
-    renderTaskColumn(todayList, todayEmpty, todayTasks);
+    const dailyTasks = state.tasks.filter((t) => t.schedule === "daily").sort(dailySort);
+    const todayTasks = state.tasks
+      .filter((t) => t.schedule !== "daily" && t.dueDate === today).sort(todaySort);
+
+    renderTaskColumn(dailyList, dailyEmpty, dailyTasks, false);
+    renderTaskColumn(todayList, todayEmpty, todayTasks, true);
     renderCharacter();
   }
 

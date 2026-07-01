@@ -252,6 +252,23 @@ body {
 .due.is-done-due { color: var(--free); font-weight: 700; }
 
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-move { padding: 4px 8px; line-height: 1; }
+.btn:disabled { opacity: 0.35; cursor: default; }
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  margin-right: 8px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
 
 /* ===== 顧客一覧（テーブル） ===== */
 .customer-list { display: block; overflow-x: auto; }
