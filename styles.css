@@ -253,6 +253,8 @@ body {
 
 .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .btn-move { padding: 4px 8px; line-height: 1; }
+.btn-top { padding: 4px 8px; line-height: 1; border-color: var(--upsell); color: var(--upsell); font-weight: 700; }
+.btn-top:hover:not(:disabled) { background: var(--upsell); color: #fff; }
 .btn:disabled { opacity: 0.35; cursor: default; }
 .rank-badge {
   display: inline-flex;

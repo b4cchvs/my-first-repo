@@ -240,6 +240,7 @@
     const actions = el("div", { class: "row-actions" });
     if (opts.reorderable) {
       actions.append(
+        el("button", { class: "btn btn-sm btn-top", disabled: opts.isFirst, title: "最優先にする", onclick: () => moveTodayTop(task.id) }, "⭐最優先"),
         el("button", { class: "btn btn-sm btn-move", disabled: opts.isFirst, title: "順位を上げる", onclick: () => moveToday(task.id, -1) }, "↑"),
         el("button", { class: "btn btn-sm btn-move", disabled: opts.isLast, title: "順位を下げる", onclick: () => moveToday(task.id, 1) }, "↓"),
       );
@@ -286,6 +287,18 @@
     const a = list[i], b = list[j];
     const ak = orderKey(a), bk = orderKey(b);
     a.order = bk; b.order = ak;
+    save();
+    renderTasks();
+  }
+
+  /** 今日のタスクをワンクリックで最優先（先頭）に */
+  function moveTodayTop(id) {
+    const today = todayISO();
+    const list = state.tasks.filter((t) => t.schedule !== "daily" && t.dueDate === today);
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t || !list.length) return;
+    const minKey = Math.min(...list.map(orderKey));
+    t.order = minKey - 1; // 現在の最小より小さくして先頭へ
     save();
     renderTasks();
   }
